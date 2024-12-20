@@ -14,6 +14,7 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
+    "typing_extensions",
     "ops>=2.17",
 ]
 

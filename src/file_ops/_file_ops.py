@@ -2,21 +2,16 @@ from __future__ import annotations
 
 import datetime
 import fnmatch
-import functools
 import grp
 import pwd
 import shutil
 import stat
 from pathlib import Path, PurePath
-from typing import BinaryIO, Callable, Iterable, ParamSpec, Protocol, TextIO, TypeVar, cast, overload
+from typing import BinaryIO, Iterable, Protocol, TextIO, cast, overload
 
 import ops
 
-
-class FileOperationError(Exception):
-    def __init__(self, exception: Exception):
-        self.exception = exception
-        super().__init__(type(exception), *exception.args)
+from ._exceptions import FileExistsPathError, FileNotFoundAPIError, FileNotFoundPathError, PermissionPathError, ValuePathError
 
 
 class FileOpsProtocol(Protocol):
@@ -95,26 +90,6 @@ class FileOpsProtocol(Protocol):
         ...
 
 
-P = ParamSpec("P")
-T = TypeVar("T")
-def wrap_exceptions(*exceptions: type[BaseException]) -> Callable[[Callable[P, T]], Callable[P, T]]:
-    def decorator(fn: Callable[P, T]) -> Callable[P, T]:
-        @functools.wraps(fn)
-        def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            try:
-                return fn(*args, **kwargs)
-            except exceptions as e:
-                raise FileOperationError(e)
-        return wrapper
-    return decorator
-
-
-_EXCEPTIONS = (
-    ops.pebble.Error,
-    FileNotFoundError,
-)
-
-
 class FileOps:
     def __init__(self, container: ops.Container | None = None) -> None:
         self._container = container
@@ -129,7 +104,6 @@ class FileOps:
             return self._container.isdir(path)
         return Path(path).is_dir()
 
-    @wrap_exceptions(ops.pebble.APIError, FileNotFoundError)
     def list_files(
         self,
         path: str | PurePath,
@@ -138,10 +112,13 @@ class FileOps:
         itself: bool = False,
     ) -> list[ops.pebble.FileInfo]:
         if self._container is not None:
-            return self._container.list_files(path, pattern=pattern, itself=itself)
+            try:
+                return self._container.list_files(path, pattern=pattern, itself=itself)
+            except ops.pebble.APIError as e:
+                raise FileNotFoundAPIError.from_error(e, path=path)
         ppath = Path(path)
         if not ppath.exists():
-            raise FileNotFoundError(f"{ppath} does not exist")  # pebble raises an APIError
+            raise FileNotFoundAPIError.from_path(ppath)
         if itself or not ppath.is_dir():
             paths = [ppath]
         else:
@@ -150,7 +127,6 @@ class FileOps:
             paths = [p for p in paths if fnmatch.fnmatch(str(p), pattern)]
         return [_path_to_fileinfo(p) for p in paths]
 
-    @wrap_exceptions(ops.pebble.PathError, FileExistsError)
     def make_dir(
         self,
         path: str | PurePath,
@@ -163,29 +139,45 @@ class FileOps:
         group: str | None = None,
     ) -> None:
         if self._container is not None:
-            return self._container.make_dir(
-                path,
-                make_parents=make_parents,
-                permissions=permissions,
-                user_id=user_id,
-                user=user,
-                group_id=group_id,
-                group=group,
-            )
+            try:
+                return self._container.make_dir(
+                    path,
+                    make_parents=make_parents,
+                    permissions=permissions,
+                    user_id=user_id,
+                    user=user,
+                    group_id=group_id,
+                    group=group,
+                )
+            except ops.pebble.PathError as e:
+                for error in (
+                    FileExistsPathError,
+                    PermissionPathError,
+                    ValuePathError,
+                ):
+                    if error.matches(e):
+                        raise error.from_error(e, path=path)
+                raise
         # raise mismatch errors before creating directory
-        user_arg = _get_user_arg(user=user, user_id=user_id)
-        group_arg = _get_group_arg(group=group, group_id=group_id)
-        directory = Path(path)
-        directory.mkdir(
-            parents=make_parents,
-            mode=permissions if permissions is not None else 0o777,  # default mode value for Path.mkdir
-            exist_ok=False,  # FileExistsError if exists -- pebble raises a pebble.PathError
-        )
         try:
-            _try_chown(directory, user_arg=user_arg, group_arg=group_arg)
-        except FileOperationError:
+            user_arg = _get_user_arg(user=user, user_id=user_id)
+            group_arg = _get_group_arg(group=group, group_id=group_id)
+        except (ValueError, KeyError) as e:
+            raise ValuePathError('generic-file-error', message=str(e), file=str(path))
+        directory = Path(path)
+        try:
+            directory.mkdir(
+                parents=make_parents,
+                mode=permissions if permissions is not None else 0o777,  # default mode value for Path.mkdir -- pebble's is 0o644
+                exist_ok=False,  # FileExistsError if exists -- pebble raises a pebble.PathError
+            )
+        except FileExistsError:
+            raise FileExistsPathError.from_path(path=path, method='mkdir')
+        try:
+            _try_chown(directory, user=user_arg, group=group_arg)
+        except (KeyError, PermissionError) as e:
             directory.rmdir()
-            raise
+            raise PermissionPathError.from_exception(e, path=path, method='mkdir')
 
     def push_path(
         self,
@@ -202,6 +194,11 @@ class FileOps:
         raise NotImplementedError()
 
     def remove_path(self, path: str | PurePath, *, recursive: bool = False) -> None:
+        if self._container is not None:
+            try:
+                self._container.remove_path(path, recursive=recursive)
+            except ops.pebble.PathError as e:
+                raise FileNotFoundPathError.from_error(e, path=path)
         raise NotImplementedError()
 
     def push(
@@ -244,7 +241,7 @@ class FileOps:
             source = source.read()
         if isinstance(source, str):
             source = source.encode(encoding=encoding)
-        mode = permissions if permissions is not None else 0o777  # default mode value for Path.mkdir
+        mode = permissions if permissions is not None else 0o777  # default mode value for Path.mkdir  -- pebble's is 0o644
         # TODO: does it make sense to apply all the permissions to the directory? probably for read/write, but what about execute?
         if make_dirs:
             ppath.parent.mkdir(parents=True, mode=mode)  # TODO: exist_ok behaviour?
@@ -272,50 +269,50 @@ class FileOps:
 def _chown(path: Path, user: str | None, user_id: int | None, group: str | None, group_id: int | None) -> None:
     user_arg = _get_user_arg(user=user, user_id=user_id)
     group_arg = _get_group_arg(group=group, group_id=group_id)
-    _try_chown(path, user_arg=user_arg, group_arg=group_arg)
+    _try_chown(path, user=user_arg, group=group_arg)
 
 
-@wrap_exceptions(
-    KeyError,   # id not found
-)
 def _get_user_arg(user: str | None, user_id: int | None) -> str | int | None:
-    user_arg: str | int | None = None
     if user_id is not None:
-        user_arg = user_id
         if user is not None:
-            if pwd.getpwuid(user_id).pw_name != user:
-                raise FileOperationError(ValueError("If both user_id and user name are provided, they must match.")) # pebble.PathError
-    elif user is not None:
-        user_arg = user
-    return user_arg
+            info = pwd.getpwuid(user_id)  # KeyError if id doesn't exist
+            if info.pw_name != user:
+                raise ValueError("If both user_id and user name are provided, they must match.")
+        return user_id
+    if user is not None:
+        return user
+    return None
 
 
-@wrap_exceptions(
-    KeyError,   # id not found
-)
 def _get_group_arg(group: str | None, group_id: int | None) -> str | int | None:
-    group_arg: str | int | None = None
     if group_id is not None:
-        group_arg = group_id
         if group is not None:
-            if grp.getgrgid(group_id).gr_name != group:
-                raise FileOperationError(ValueError("If both groupd_id and groupd name are provided, they must match.")) # pebble.PathError
+            info = grp.getgrgid(group_id)  # KeyError if id doesn't exist
+            if info.gr_name != group:
+                raise ValueError("If both groupd_id and group name are provided, they must match.")
+        return group_id
+    if group is not None:
+        return group
+    return None
+
+
+def _try_chown(path: Path | str, user: int | str | None, group: int | str | None) -> None:
+    # KeyError for user/group that doesn't exist
+    if isinstance(user, str):
+        pwd.getpwnam(user)
+    elif isinstance(user, int):
+        pwd.getpwuid(user)
+    if isinstance(group, str):
+        grp.getgrnam(group)
+    elif isinstance(group, int):
+        grp.getgrgid(group)
+    # PermissionError for e.g. unprivileged user trying to chown as root
+    if user is not None and group is not None:
+        shutil.chown(path, user=user, group=group)
+    elif user is not None:
+        shutil.chown(path, user=user)
     elif group is not None:
-        group_arg = group
-    return group_arg
-
-
-@wrap_exceptions(
-    PermissionError,  # e.g. unprivileged user trying to chown as root, user/group doesn't exist
-)
-def _try_chown(path: Path | str, user_arg: int | str | None, group_arg: int | str | None) -> None:
-    # chown -- pebble.PathError for permission denied
-    if user_arg is not None and group_arg is not None:
-        shutil.chown(path, user=user_arg, group=group_arg)
-    elif user_arg is not None:
-        shutil.chown(path, user=user_arg)
-    elif group_arg is not None:
-        shutil.chown(path, group=group_arg)
+        shutil.chown(path, group=group)
 
 
 def _path_to_fileinfo(path: Path) -> ops.pebble.FileInfo:
