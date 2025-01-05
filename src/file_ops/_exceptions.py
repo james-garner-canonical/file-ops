@@ -19,9 +19,13 @@ class FileNotFoundAPIError(ops.pebble.APIError, builtins.FileNotFoundError):
         builtins.FileNotFoundError.__init__(self, errno.ENOENT, os.strerror(errno.ENOENT), file)
         ops.pebble.APIError.__init__(self, body=body, code=code, status=status, message=message)
 
+    def __str__(self) -> str:
+        # manually avoid calling FileNotFoundError.__str__ since we have APIError.args
+        return ops.pebble.APIError.__str__(self)
+
     @classmethod
     def from_error(cls, error: ops.pebble.APIError, path: PurePath | str) -> Self:
-        assert error.code == 404
+        assert cls.matches(error)
         return cls(
             body=error.body,
             code=error.code,
@@ -43,6 +47,10 @@ class FileNotFoundAPIError(ops.pebble.APIError, builtins.FileNotFoundError):
             'result': {'message': message, 'kind': 'not-found'},
         }
         return cls(body=body, code=code, status=status, message=message, file=str(path))
+
+    @classmethod
+    def matches(cls, error: ops.pebble.Error) -> bool:
+        return isinstance(error, ops.pebble.APIError) and error.code == 404
 
 
 class FileNotFoundPathError(ops.pebble.PathError, builtins.FileNotFoundError):
@@ -66,8 +74,8 @@ class FileNotFoundPathError(ops.pebble.PathError, builtins.FileNotFoundError):
         )
 
     @classmethod
-    def matches(cls, error: ops.pebble.PathError) -> bool:
-        return error.kind == 'not-found'
+    def matches(cls, error: ops.pebble.Error) -> bool:
+        return isinstance(error, ops.pebble.PathError) and error.kind == 'not-found'
 
 
 class FileExistsPathError(ops.pebble.PathError, builtins.FileExistsError):
@@ -91,8 +99,42 @@ class FileExistsPathError(ops.pebble.PathError, builtins.FileExistsError):
         )
 
     @classmethod
-    def matches(cls, error: ops.pebble.PathError) -> bool:
-        return error.kind == 'generic-file-error' and 'file exists' in error.message
+    def matches(cls, error: ops.pebble.Error) -> bool:
+        return (
+            isinstance(error, ops.pebble.PathError)
+            and error.kind == 'generic-file-error'
+            and 'file exists' in error.message
+        )
+
+
+class LookupPathError(ops.pebble.PathError, builtins.LookupError):
+    def __init__(self, kind: str, message: str):
+        # both __init__ methods will call Exception.__init__ and set self.args
+        # we want to have the pebble.Error version since we're using its repr etc
+        builtins.LookupError.__init__(self, message)
+        ops.pebble.PathError.__init__(self, kind=kind, message=message)
+
+    @classmethod
+    def from_error(cls, error: ops.pebble.PathError, path: PurePath | str) -> Self:
+        assert cls.matches(error)
+        return cls(kind=error.kind, message=error.message)
+
+    @classmethod
+    def from_exception(
+        cls, error: builtins.LookupError | builtins.KeyError, path: PurePath | str, method: str
+    ) -> Self:
+        return cls(
+            kind='generic-file-error',
+            message=f'{method} {path}: {error}',
+        )
+
+    @classmethod
+    def matches(cls, error: ops.pebble.Error) -> bool:
+        return (
+            isinstance(error, ops.pebble.PathError)
+            and error.kind == 'generic-file-error'
+            and ('unknown user' in error.message or 'unknown group' in error.message)
+        )
 
 
 class PermissionPathError(ops.pebble.PathError, builtins.PermissionError):
@@ -111,15 +153,15 @@ class PermissionPathError(ops.pebble.PathError, builtins.PermissionError):
     def from_exception(cls, error: builtins.PermissionError | builtins.KeyError, path: PurePath | str, method: str) -> Self:
         error_number = getattr(error, 'errno', None) or errno.EPERM
         return cls(
-            kind='permission-error',
+            kind='permission-denied',
             message=f'{method} {path}: {os.strerror(error_number)}',
             error_number=error_number,
             file=str(path),
         )
 
     @classmethod
-    def matches(cls, error: ops.pebble.PathError) -> bool:
-        return error.kind == 'permission-denied'
+    def matches(cls, error: ops.pebble.Error) -> bool:
+        return isinstance(error, ops.pebble.PathError) and error.kind == 'permission-denied'
 
 
 class ValuePathError(ops.pebble.PathError, builtins.ValueError):
@@ -135,5 +177,17 @@ class ValuePathError(ops.pebble.PathError, builtins.ValueError):
         return cls(kind=error.kind, message=error.message, file=str(path))
 
     @classmethod
-    def matches(cls, error: ops.pebble.PathError) -> bool:
-        return error.kind == 'generic-file-error' and not FileExistsPathError.matches(error)
+    def from_path(cls, path: PurePath | str, method: str, message: str) -> Self:
+        return cls(
+            kind='generic-file-error',
+            message=f'{method} {path}: {message}',
+            file=str(path),
+        )
+
+    @classmethod
+    def matches(cls, error: ops.pebble.Error) -> bool:
+        return (
+            isinstance(error, ops.pebble.PathError)
+            and error.kind == 'generic-file-error'
+            and not any(e.matches(error) for e in (FileExistsPathError, LookupPathError))
+        )

@@ -1,5 +1,6 @@
 import os
 import pathlib
+import shutil
 
 import file_ops
 import ops
@@ -120,6 +121,68 @@ class TestMakeDir:
         print(exception_context.value)
         assert isinstance(exception_context.value, file_ops.FileExistsPathError)
 
+    def test_subdirectory_make_parents(self, container: ops.Container):
+        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
+        subdirectory = directory / 'subdirectory'
+        if directory.exists():
+            directory.rmdir()
+        # container
+        file_ops.FileOps(container).make_dir(subdirectory, make_parents=True)
+        assert subdirectory.exists()
+        shutil.rmtree(directory)
+        # no container
+        file_ops.FileOps().make_dir(directory, make_parents=True)
+        assert directory.exists()
+        # cleanup
+        shutil.rmtree(directory)
+
+    def test_subdirectory_no_make_parents(self, container: ops.Container):
+        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
+        subdirectory = directory / 'subdirectory'
+        if directory.exists():
+            directory.rmdir()
+        # container
+        with pytest.raises(ops.pebble.PathError) as exception_context:
+            file_ops.FileOps(container).make_dir(subdirectory)
+        print(exception_context.value)
+        assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
+        assert not subdirectory.exists()
+        assert not directory.exists()
+        # no container
+        with pytest.raises(FileNotFoundError) as exception_context:
+            file_ops.FileOps().make_dir(subdirectory)
+        print(exception_context.value)
+        assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
+        assert not subdirectory.exists()
+        assert not directory.exists()
+
+    def test_subdirectory_already_exists_make_parents(self, container: ops.Container):
+        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
+        subdirectory = directory / 'subdirectory'
+        subdirectory.mkdir(exist_ok=True, parents=True)
+        # with container
+        file_ops.FileOps(container).make_dir(subdirectory, make_parents=True)
+        # without container
+        file_ops.FileOps().make_dir(subdirectory, make_parents=True)
+        # cleanup
+        shutil.rmtree(directory)
+
+    def test_subdirectory_already_exists_no_make_parents(self, container: ops.Container):
+        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
+        subdirectory = directory / 'subdirectory'
+        subdirectory.mkdir(exist_ok=True, parents=True)
+        # with container
+        with pytest.raises(ops.pebble.PathError) as exception_context:
+            file_ops.FileOps(container).make_dir(subdirectory)
+        print(exception_context.value)
+        assert isinstance(exception_context.value, file_ops.FileExistsPathError)
+        # without container
+        with pytest.raises(FileExistsError) as exception_context:
+            file_ops.FileOps().make_dir(subdirectory)
+        print(exception_context.value)
+        assert isinstance(exception_context.value, file_ops.FileExistsPathError)
+        shutil.rmtree(directory)
+
     def test_chown_root_without_privileges(self, container: ops.Container):
         # TODO: what if we do have root privileges, like in ci?
         user_id = 0
@@ -140,21 +203,23 @@ class TestMakeDir:
         assert isinstance(exception_context.value, file_ops.PermissionPathError)
         assert not pathlib.Path(directory).exists()
 
-    def test_chown_when_user_id_doesnt_exist(self, container: ops.Container):
+    def test_chown_when_user_doesnt_exist(self, container: ops.Container):
         directory = pathlib.Path('/tmp/pebble-test/tmpdir')
         if directory.exists():
             directory.rmdir()
+        # TODO: user that doesn't exist
+        user_name = 'fake_user'
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            file_ops.FileOps(container).make_dir(directory, user_id=9000)
+            file_ops.FileOps(container).make_dir(directory, user=user_name)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.ValuePathError)
+        assert isinstance(exception_context.value, file_ops.LookupPathError)
         assert not pathlib.Path(directory).exists()
         # without container
-        with pytest.raises(ValueError) as exception_context:
-            file_ops.FileOps().make_dir(directory, user_id=9000)
+        with pytest.raises(LookupError) as exception_context:
+            file_ops.FileOps().make_dir(directory, user=user_name)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.ValuePathError)
+        assert isinstance(exception_context.value, file_ops.LookupPathError)
         assert not pathlib.Path(directory).exists()
 
     def test_chown_when_user_id_and_group_id_dont_exist(self, container: ops.Container):
@@ -173,6 +238,90 @@ class TestMakeDir:
         print(exception_context.value)
         assert isinstance(exception_context.value, file_ops.PermissionPathError)
         assert not pathlib.Path(directory).exists()
+
+    def test_just_user(self, container: ops.Container):
+        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
+        if directory.exists():
+            directory.rmdir()
+        # TODO: user that exists
+        user_name = 'user'
+        # with container
+        file_ops.FileOps(container).make_dir(directory, user=user_name)
+        assert directory.exists()
+        directory.rmdir()
+        # without container
+        file_ops.FileOps().make_dir(directory, user=user_name)
+        assert directory.exists()
+        directory.rmdir()
+
+    def test_just_user_id(self, container: ops.Container):
+        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
+        if directory.exists():
+            directory.rmdir()
+        # TODO: user that exists
+        user_id = 1000
+        # with container
+        with pytest.raises(ops.pebble.PathError) as exception_context:
+            file_ops.FileOps(container).make_dir(directory, user_id=user_id)
+        assert not directory.exists()
+        assert isinstance(exception_context.value, file_ops.ValuePathError)
+        # without container
+        with pytest.raises(ValueError) as exception_context:
+            file_ops.FileOps().make_dir(directory, user_id=user_id)
+        assert not directory.exists()
+        assert isinstance(exception_context.value, file_ops.ValuePathError)
+
+    def test_just_group_name(self, container: ops.Container):
+        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
+        if directory.exists():
+            directory.rmdir()
+        # TODO: user that exists
+        group = 'user'
+        # with container
+        with pytest.raises(ops.pebble.PathError) as exception_context:
+            file_ops.FileOps(container).make_dir(directory, group=group)
+        assert not directory.exists()
+        assert isinstance(exception_context.value, file_ops.ValuePathError)
+        # without container
+        with pytest.raises(ValueError) as exception_context:
+            file_ops.FileOps().make_dir(directory, group=group)
+        assert not directory.exists()
+        assert isinstance(exception_context.value, file_ops.ValuePathError)
+
+    def test_just_group_id(self, container: ops.Container):
+        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
+        if directory.exists():
+            directory.rmdir()
+        # TODO: user that exists
+        group_id = 1000
+        # with container
+        with pytest.raises(ops.pebble.PathError) as exception_context:
+            file_ops.FileOps(container).make_dir(directory, group_id=group_id)
+        assert not directory.exists()
+        assert isinstance(exception_context.value, file_ops.ValuePathError)
+        # without container
+        with pytest.raises(ValueError) as exception_context:
+            file_ops.FileOps().make_dir(directory, group_id=group_id)
+        assert not directory.exists()
+        assert isinstance(exception_context.value, file_ops.ValuePathError)
+
+    def test_just_group_args(self, container: ops.Container):
+        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
+        if directory.exists():
+            directory.rmdir()
+        # TODO: user that exists
+        group = 'user'
+        group_id = 1000
+        # with container
+        with pytest.raises(ops.pebble.PathError) as exception_context:
+            file_ops.FileOps(container).make_dir(directory, group=group, group_id=group_id)
+        assert not directory.exists()
+        assert isinstance(exception_context.value, file_ops.ValuePathError)
+        # without container
+        with pytest.raises(ValueError) as exception_context:
+            file_ops.FileOps().make_dir(directory, group=group, group_id=group_id)
+        assert not directory.exists()
+        assert isinstance(exception_context.value, file_ops.ValuePathError)
 
     def test_chown_when_user_and_user_id_both_exist_but_dont_match(self, container: ops.Container):
         directory = pathlib.Path('/tmp/pebble-test/tmpdir')
@@ -206,13 +355,13 @@ class TestMakeDir:
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOps(container).make_dir(directory, user=user_name, user_id=user_id)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.ValuePathError)
+        assert isinstance(exception_context.value, file_ops.LookupPathError)
         assert not pathlib.Path(directory).exists()
         # without container
-        with pytest.raises(ValueError) as exception_context:
+        with pytest.raises(LookupError) as exception_context:
             file_ops.FileOps().make_dir(directory, user=user_name, user_id=user_id)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.ValuePathError)
+        assert isinstance(exception_context.value, file_ops.LookupPathError)
         assert not pathlib.Path(directory).exists()
 
 
@@ -228,9 +377,8 @@ class TestRemovePath:
             file_ops.FileOps(container).remove_path(file)
         print(exception_context.value)
         assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
-        return
         # without container
-        with pytest.raises(FileNotFoundError) as exception_context:
+        with pytest.raises(NotImplementedError) as exception_context:
             file_ops.FileOps().remove_path(file)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
+        #assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)

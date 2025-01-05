@@ -11,7 +11,7 @@ from typing import BinaryIO, Iterable, Protocol, TextIO, cast, overload
 
 import ops
 
-from ._exceptions import FileExistsPathError, FileNotFoundAPIError, FileNotFoundPathError, PermissionPathError, ValuePathError
+from ._exceptions import FileExistsPathError, FileNotFoundAPIError, FileNotFoundPathError, LookupPathError, PermissionPathError, ValuePathError
 
 
 class FileOpsProtocol(Protocol):
@@ -118,7 +118,7 @@ class FileOps:
                 raise FileNotFoundAPIError.from_error(e, path=path)
         ppath = Path(path)
         if not ppath.exists():
-            raise FileNotFoundAPIError.from_path(ppath)
+            raise FileNotFoundAPIError.from_path(path)
         if itself or not ppath.is_dir():
             paths = [ppath]
         else:
@@ -152,6 +152,8 @@ class FileOps:
             except ops.pebble.PathError as e:
                 for error in (
                     FileExistsPathError,
+                    FileNotFoundPathError,
+                    LookupPathError,
                     PermissionPathError,
                     ValuePathError,
                 ):
@@ -160,22 +162,43 @@ class FileOps:
                 raise
         # raise mismatch errors before creating directory
         try:
-            user_arg = _get_user_arg(user=user, user_id=user_id)
-            group_arg = _get_group_arg(group=group, group_id=group_id)
-        except (ValueError, KeyError) as e:
-            raise ValuePathError('generic-file-error', message=str(e), file=str(path))
+            user_arg = _get_user_arg(str_name=user, int_id=user_id)
+            group_arg = _get_group_arg(str_name=group, int_id=group_id)
+        except KeyError as e:
+            raise LookupPathError.from_exception(e, path=path, method='mkdir')
+        except ValueError as e:
+            raise ValuePathError.from_path(path=path, method='mkdir', message=str(e))
+        if user_arg is None and group_arg is not None:
+            raise ValuePathError.from_path(
+                path=path,
+                method='mkdir',
+                message='cannot look up user and group: must specify user, not just group',
+            )
+        if isinstance(user_arg, int) and group_arg is None:
+            # TODO: patch pebble so that this isn't an error case
+            raise ValuePathError.from_path(
+                path=path,
+                method='mkdir',
+                message='cannot look up user and group: must specify group, not just UID',
+            )
         directory = Path(path)
         try:
             directory.mkdir(
                 parents=make_parents,
-                mode=permissions if permissions is not None else 0o777,  # default mode value for Path.mkdir -- pebble's is 0o644
-                exist_ok=False,  # FileExistsError if exists -- pebble raises a pebble.PathError
+                mode=permissions if permissions is not None else 0o755,  # Pebble default
+                # https://ops.readthedocs.io/en/latest/reference/pebble.html#ops.pebble.Client.make_dir
+                exist_ok=make_parents,
             )
         except FileExistsError:
             raise FileExistsPathError.from_path(path=path, method='mkdir')
+        except FileNotFoundError:
+            raise FileNotFoundPathError.from_path(path=path, method='mkdir')
         try:
             _try_chown(directory, user=user_arg, group=group_arg)
-        except (KeyError, PermissionError) as e:
+        except KeyError as e:
+            directory.rmdir()
+            raise LookupPathError.from_exception(e, path=path, method='mkdir')
+        except PermissionError as e:
             directory.rmdir()
             raise PermissionPathError.from_exception(e, path=path, method='mkdir')
 
@@ -241,7 +264,8 @@ class FileOps:
             source = source.read()
         if isinstance(source, str):
             source = source.encode(encoding=encoding)
-        mode = permissions if permissions is not None else 0o777  # default mode value for Path.mkdir  -- pebble's is 0o644
+        mode = permissions if permissions is not None else 0o644  # Pebble default
+        # https://ops.readthedocs.io/en/latest/reference/pebble.html#ops.pebble.Client.push
         # TODO: does it make sense to apply all the permissions to the directory? probably for read/write, but what about execute?
         if make_dirs:
             ppath.parent.mkdir(parents=True, mode=mode)  # TODO: exist_ok behaviour?
@@ -249,6 +273,7 @@ class FileOps:
         #TODO: else: error if not make_dirs and directory doesn't exist?
         ppath.write_bytes(source)
         _chown(ppath, user=user, user_id=user_id, group=group, group_id=group_id)
+        # TODO: correct and test hown error handling following make_dir
         # TODO: chmod
 
     @overload
@@ -267,45 +292,60 @@ class FileOps:
 
 
 def _chown(path: Path, user: str | None, user_id: int | None, group: str | None, group_id: int | None) -> None:
-    user_arg = _get_user_arg(user=user, user_id=user_id)
-    group_arg = _get_group_arg(group=group, group_id=group_id)
+    user_arg = _get_user_arg(str_name=user, int_id=user_id)
+    group_arg = _get_group_arg(str_name=group, int_id=group_id)
     _try_chown(path, user=user_arg, group=group_arg)
 
 
-def _get_user_arg(user: str | None, user_id: int | None) -> str | int | None:
-    if user_id is not None:
-        if user is not None:
-            info = pwd.getpwuid(user_id)  # KeyError if id doesn't exist
-            if info.pw_name != user:
-                raise ValueError("If both user_id and user name are provided, they must match.")
-        return user_id
-    if user is not None:
-        return user
+def _get_user_arg(str_name: str | None, int_id: int | None) -> str | int | None:
+    if str_name is not None:
+        if int_id is not None:
+            info = pwd.getpwnam(str_name)  # KeyError if user doesn't exist
+            info_id = info.pw_uid
+            if info_id != int_id:
+                raise ValueError(
+                    'If both user_id and user name are provided, they must match'
+                    f' -- "{str_name}" has id {info_id} but {int_id} was provided.'
+                )
+        return str_name
+    if int_id is not None:
+        return int_id
     return None
 
 
-def _get_group_arg(group: str | None, group_id: int | None) -> str | int | None:
-    if group_id is not None:
-        if group is not None:
-            info = grp.getgrgid(group_id)  # KeyError if id doesn't exist
-            if info.gr_name != group:
-                raise ValueError("If both groupd_id and group name are provided, they must match.")
-        return group_id
-    if group is not None:
-        return group
+def _get_group_arg(str_name: str | None, int_id: int | None) -> str | int | None:
+    if str_name is not None:
+        if int_id is not None:
+            info = grp.getgrnam(str_name)  # KeyError if group doesn't exist
+            info_id = info.gr_gid
+            if info_id != int_id:
+                raise ValueError(
+                    'If both group_id and group name are provided, they must match'
+                    f' -- "{str_name}" has id {info_id} but {int_id} was provided.'
+                )
+        return str_name
+    if int_id is not None:
+        return int_id
     return None
 
 
 def _try_chown(path: Path | str, user: int | str | None, group: int | str | None) -> None:
-    # KeyError for user/group that doesn't exist
+    # KeyError for user/group that doesn't exist, as pebble looks these up
     if isinstance(user, str):
         pwd.getpwnam(user)
-    elif isinstance(user, int):
-        pwd.getpwuid(user)
     if isinstance(group, str):
         grp.getgrnam(group)
-    elif isinstance(group, int):
-        grp.getgrgid(group)
+    # PermissionError for user_id/group_id that doesn't exist, as pebble tries to use these
+    if isinstance(user, int):
+        try:
+            pwd.getpwuid(user)
+        except KeyError as e:
+            raise PermissionError(e)
+    if isinstance(group, int):
+        try:
+            grp.getgrgid(group)
+        except KeyError as e:
+            raise PermissionError(e)
     # PermissionError for e.g. unprivileged user trying to chown as root
     if user is not None and group is not None:
         shutil.chown(path, user=user, group=group)
