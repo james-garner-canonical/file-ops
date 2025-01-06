@@ -6,12 +6,17 @@ import grp
 import pwd
 import shutil
 import stat
+from contextlib import AbstractContextManager
 from pathlib import Path, PurePath
-from typing import BinaryIO, Iterable, Protocol, TextIO, cast, overload
+from typing import TYPE_CHECKING, Protocol, cast, overload
 
 import ops
 
 from ._exceptions import FileExistsPathError, FileNotFoundAPIError, FileNotFoundPathError, LookupPathError, PermissionPathError, ValuePathError
+
+if TYPE_CHECKING:
+    import types
+    from typing import BinaryIO, Callable, Iterable, TextIO
 
 
 class FileOpsProtocol(Protocol):
@@ -160,6 +165,28 @@ class FileOps:
                     if error.matches(e):
                         raise error.from_error(e, path=path)
                 raise
+        directory = Path(path)
+        with _Chown(
+            path=directory,
+            user=user,
+            user_id=user_id,
+            group=group,
+            group_id=group_id,
+            method='mkdir',
+            on_error=directory.rmdir,
+        ):
+            try:
+                directory.mkdir(
+                    parents=make_parents,
+                    mode=permissions if permissions is not None else 0o755,  # Pebble default
+                    # https://ops.readthedocs.io/en/latest/reference/pebble.html#ops.pebble.Client.make_dir
+                    exist_ok=make_parents,
+                )
+            except FileExistsError:
+                raise FileExistsPathError.from_path(path=path, method='mkdir')
+            except FileNotFoundError:
+                raise FileNotFoundPathError.from_path(path=path, method='mkdir')
+        return
         # raise mismatch errors before creating directory
         try:
             user_arg = _get_user_arg(str_name=user, int_id=user_id)
@@ -268,12 +295,14 @@ class FileOps:
         # https://ops.readthedocs.io/en/latest/reference/pebble.html#ops.pebble.Client.push
         # TODO: does it make sense to apply all the permissions to the directory? probably for read/write, but what about execute?
         if make_dirs:
-            ppath.parent.mkdir(parents=True, mode=mode)  # TODO: exist_ok behaviour?
+            ppath.parent.mkdir(parents=True, exist_ok=True, mode=mode)
             # TODO: do we need to chown any directories created?
         #TODO: else: error if not make_dirs and directory doesn't exist?
         ppath.write_bytes(source)
-        _chown(ppath, user=user, user_id=user_id, group=group, group_id=group_id)
-        # TODO: correct and test hown error handling following make_dir
+        # TODO: correct and test chown error handling following make_dir
+        user_arg = _get_user_arg(str_name=user, int_id=user_id)
+        group_arg = _get_group_arg(str_name=group, int_id=group_id)
+        _try_chown(ppath, user=user_arg, group=group_arg)
         # TODO: chmod
 
     @overload
@@ -291,10 +320,59 @@ class FileOps:
         raise NotImplementedError()
 
 
-def _chown(path: Path, user: str | None, user_id: int | None, group: str | None, group_id: int | None) -> None:
-    user_arg = _get_user_arg(str_name=user, int_id=user_id)
-    group_arg = _get_group_arg(str_name=group, int_id=group_id)
-    _try_chown(path, user=user_arg, group=group_arg)
+class _Chown(AbstractContextManager['_Chown', None]):
+    def __init__(
+        self,
+        path: Path,
+        user: str | None,
+        user_id: int | None,
+        group: str | None,
+        group_id: int | None,
+        method: str,
+        on_error: Callable[[], None],
+    ):
+        try:
+            user_arg = _get_user_arg(str_name=user, int_id=user_id)
+            group_arg = _get_group_arg(str_name=group, int_id=group_id)
+        except KeyError as e:
+            raise LookupPathError.from_exception(e, path=path, method='mkdir')
+        except ValueError as e:
+            raise ValuePathError.from_path(path=path, method='mkdir', message=str(e))
+        if user_arg is None and group_arg is not None:
+            raise ValuePathError.from_path(
+                path=path,
+                method='mkdir',
+                message='cannot look up user and group: must specify user, not just group',
+            )
+        if isinstance(user_arg, int) and group_arg is None:
+            # TODO: patch pebble so that this isn't an error case
+            raise ValuePathError.from_path(
+                path=path,
+                method='mkdir',
+                message='cannot look up user and group: must specify group, not just UID',
+            )
+        self.path = path
+        self.user_arg = user_arg
+        self.group_arg = group_arg
+        self.method = method
+        self.on_error = on_error
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: types.TracebackType | None,
+    ) -> None:
+        if exc_type is not None:
+            return
+        try:
+            _try_chown(self.path, user=self.user_arg, group=self.group_arg)
+        except KeyError as e:
+            self.on_error()
+            raise LookupPathError.from_exception(e, path=self.path, method=self.method)
+        except PermissionError as e:
+            self.on_error()
+            raise PermissionPathError.from_exception(e, path=self.path, method=self.method)
 
 
 def _get_user_arg(str_name: str | None, int_id: int | None) -> str | int | None:
