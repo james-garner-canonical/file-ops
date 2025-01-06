@@ -382,3 +382,100 @@ class TestRemovePath:
             file_ops.FileOps().remove_path(file)
         print(exception_context.value)
         #assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
+
+
+@pytest.mark.skipif(
+    os.getenv('RUN_REAL_PEBBLE_TESTS') != '1',
+    reason='RUN_REAL_PEBBLE_TESTS not set',
+)
+class TestPull:
+    def test_str_ok(self, container: ops.Container):
+        directory = pathlib.Path('/tmp/pebble-test')
+        path = directory / 'path.test'
+        contents = 'hello world'
+        path.write_text(contents)
+        # container
+        f = file_ops.FileOps(container).pull(path)
+        assert f.read() == contents
+        # no container
+        f = file_ops.FileOps().pull(path)
+        assert f.read() == contents
+        # cleanup
+        path.unlink()
+
+    def test_bytes_ok(self, container: ops.Container):
+        directory = pathlib.Path('/tmp/pebble-test')
+        path = directory / 'path.test'
+        contents = b'hello world'
+        path.write_bytes(contents)
+        # container
+        f = file_ops.FileOps(container).pull(path, encoding=None)
+        assert f.read() == contents
+        # no container
+        f = file_ops.FileOps().pull(path, encoding=None)
+        assert f.read() == contents
+        # cleanup
+        path.unlink()
+
+    def test_str_bad_encoding_argument(self, container: ops.Container):
+        directory = pathlib.Path('/tmp/pebble-test')
+        path = directory / 'path.test'
+        contents = 'hello world'
+        path.write_text(contents)
+        # container
+        with pytest.raises(LookupError):
+            file_ops.FileOps(container).pull(path, encoding='bad')
+        # no container
+        with pytest.raises(LookupError):
+            file_ops.FileOps().pull(path, encoding='bad')
+        # cleanup
+        path.unlink()
+
+    def test_str_encoding_doesnt_match(self, container: ops.Container):
+        directory = pathlib.Path('/tmp/pebble-test')
+        path = directory / 'path.test'
+        contents = bytes(range(256))
+        path.write_bytes(contents)
+        # container
+        f = file_ops.FileOps(container).pull(path, encoding='utf-8')
+        with pytest.raises(UnicodeDecodeError):
+            f.read()
+        # no container
+        f = file_ops.FileOps().pull(path, encoding='utf-8')
+        with pytest.raises(UnicodeDecodeError):
+            f.read()
+        # cleanup
+        path.unlink()
+
+    def test_target_doesnt_exist(self, container: ops.Container):
+        directory = pathlib.Path('/tmp/pebble-test')
+        path = directory / 'path.test'
+        assert not path.exists()
+        # container
+        with pytest.raises(ops.pebble.PathError) as exception_context:
+            file_ops.FileOps(container).pull(path)
+        print(exception_context.value)
+        assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
+        # no container
+        with pytest.raises(FileNotFoundError) as exception_context:
+            file_ops.FileOps().pull(path)
+        print(exception_context.value)
+        assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
+
+    def test_no_permission(self, container: ops.Container):
+        directory = pathlib.Path('/tmp/pebble-test')
+        path = directory / 'path.test'
+        path.write_text('')
+        os.chmod(path, 0)
+        # container
+        with pytest.raises(ops.pebble.PathError) as exception_context:
+            file_ops.FileOps(container).pull(path)
+        print(exception_context.value)
+        assert isinstance(exception_context.value, file_ops.PermissionPathError)
+        # no container
+        with pytest.raises(PermissionError) as exception_context:
+            file_ops.FileOps().pull(path)
+        print(exception_context.value)
+        assert isinstance(exception_context.value, file_ops.PermissionPathError)
+        # cleanup
+        path.unlink()

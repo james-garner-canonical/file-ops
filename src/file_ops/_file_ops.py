@@ -16,7 +16,7 @@ from ._exceptions import FileExistsPathError, FileNotFoundAPIError, FileNotFound
 
 if TYPE_CHECKING:
     import types
-    from typing import BinaryIO, Callable, Iterable, TextIO
+    from typing import BinaryIO, Callable, Iterable, TextIO, Union
 
 
 class FileOpsProtocol(Protocol):
@@ -317,7 +317,25 @@ class FileOps:
         *,
         encoding: str | None = 'utf-8',
     ) -> BinaryIO | TextIO:
-        raise NotImplementedError()
+        if self._container is not None:
+            try:
+                return self._container.pull(path, encoding=encoding)
+            except ops.pebble.PathError as e:
+                for error in(FileNotFoundPathError, PermissionPathError):
+                    if error.matches(e):
+                        raise error.from_error(e, path=path)
+                raise
+        try:
+            f = Path(path).open(
+                mode='r' if encoding is not None else 'rb',
+                encoding=encoding,
+                newline='' if encoding is not None else None,
+            )
+        except PermissionError as e:
+            raise PermissionPathError.from_exception(e, path=path, method='pull')
+        except FileNotFoundError as e:
+            raise FileNotFoundPathError.from_path(path=path, method='pull')
+        return cast('Union[TextIO, BinaryIO]', f)
 
 
 class _Chown(AbstractContextManager['_Chown', None]):
