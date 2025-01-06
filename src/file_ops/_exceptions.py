@@ -164,6 +164,31 @@ class PermissionPathError(ops.pebble.PathError, builtins.PermissionError):
         return isinstance(error, ops.pebble.PathError) and error.kind == 'permission-denied'
 
 
+class RelativePathError(ops.pebble.PathError):
+    def __init__(self, kind: str, message: str):
+        super().__init__(kind=kind, message=message)
+
+    @classmethod
+    def from_error(cls, error: ops.pebble.PathError, path: PurePath | str) -> Self:
+        assert cls.matches(error)
+        return cls(kind=error.kind, message=error.message)
+
+    @classmethod
+    def from_path(cls, path: PurePath | str) -> Self:
+        return cls(
+            kind='generic-file-error',
+            message=f'paths must be absolute, got "{path}"',
+        )
+
+    @classmethod
+    def matches(cls, error: ops.pebble.Error) -> bool:
+        return (
+            isinstance(error, ops.pebble.PathError)
+            and error.kind == 'generic-file-error'
+            and 'paths must be absolute' in error.message
+        )
+
+
 class ValuePathError(ops.pebble.PathError, builtins.ValueError):
     def __init__(self, kind: str, message: str, file: str):
         # both __init__ methods will call Exception.__init__ and set self.args
@@ -189,5 +214,8 @@ class ValuePathError(ops.pebble.PathError, builtins.ValueError):
         return (
             isinstance(error, ops.pebble.PathError)
             and error.kind == 'generic-file-error'
-            and not any(e.matches(error) for e in (FileExistsPathError, LookupPathError))
+            and not any(
+                e.matches(error)
+                for e in (FileExistsPathError, LookupPathError, RelativePathError)
+            )
         )

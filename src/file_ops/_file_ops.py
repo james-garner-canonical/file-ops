@@ -3,6 +3,8 @@ from __future__ import annotations
 import datetime
 import fnmatch
 import grp
+import io
+import os
 import pwd
 import shutil
 import stat
@@ -12,7 +14,15 @@ from typing import TYPE_CHECKING, Protocol, cast, overload
 
 import ops
 
-from ._exceptions import FileExistsPathError, FileNotFoundAPIError, FileNotFoundPathError, LookupPathError, PermissionPathError, ValuePathError
+from ._exceptions import (
+    FileExistsPathError,
+    FileNotFoundAPIError,
+    FileNotFoundPathError,
+    LookupPathError,
+    PermissionPathError,
+    RelativePathError,
+    ValuePathError,
+)
 
 if TYPE_CHECKING:
     import types
@@ -96,6 +106,9 @@ class FileOpsProtocol(Protocol):
 
 
 class FileOps:
+    _chunk_size = io.DEFAULT_BUFFER_SIZE
+    # 8192 on my machine, which ops.pebble.Client._chunk_size hard codes
+
     def __init__(self, container: ops.Container | None = None) -> None:
         self._container = container
 
@@ -160,12 +173,15 @@ class FileOps:
                     FileNotFoundPathError,
                     LookupPathError,
                     PermissionPathError,
+                    RelativePathError,
                     ValuePathError,
                 ):
                     if error.matches(e):
                         raise error.from_error(e, path=path)
                 raise
         directory = Path(path)
+        if not directory.is_absolute():
+            raise RelativePathError.from_path(path=directory)
         with _Chown(
             path=directory,
             user=user,
@@ -246,9 +262,15 @@ class FileOps:
     def remove_path(self, path: str | PurePath, *, recursive: bool = False) -> None:
         if self._container is not None:
             try:
-                self._container.remove_path(path, recursive=recursive)
+                return self._container.remove_path(path, recursive=recursive)
             except ops.pebble.PathError as e:
-                raise FileNotFoundPathError.from_error(e, path=path)
+                for error in (FileNotFoundPathError, RelativePathError, ValuePathError):
+                    if error.matches(e):
+                        raise error.from_error(e, path=path)
+                raise
+        ppath = Path(path)
+        if not ppath.is_absolute():
+            raise RelativePathError.from_path(path=ppath)
         raise NotImplementedError()
 
     def push(
@@ -265,18 +287,61 @@ class FileOps:
         group: str | None = None,
     ) -> None:
         if self._container is not None:
-            return self._container.push(
-                path=path,
-                source=source,
-                encoding=encoding,
-                make_dirs=make_dirs,
-                permissions=permissions,
-                user_id=user_id,
-                user=user,
-                group_id=group_id,
-                group=group,
-            )
+            try:
+                return self._container.push(
+                    path=path,
+                    source=source,
+                    encoding=encoding,
+                    make_dirs=make_dirs,
+                    permissions=permissions,
+                    user_id=user_id,
+                    user=user,
+                    group_id=group_id,
+                    group=group,
+                )
+            except ops.pebble.PathError as e:
+                for error in (RelativePathError,):
+                    if error.matches(e):
+                        raise error.from_error(e, path=path)
+                raise
+
         ppath = Path(path)
+        if not ppath.is_absolute():
+            raise RelativePathError.from_path(path=ppath)
+
+        source_io: io.StringIO | io.BytesIO | BinaryIO | TextIO
+        if isinstance(source, str):
+            source_io = io.StringIO(source)
+        elif isinstance(source, bytes):
+            source_io = io.BytesIO(source)
+        else:
+            assert not isinstance(source, (bytearray, memoryview))
+            source_io = source
+
+        mode = permissions if permissions is not None else 0o644  # Pebble default
+        if make_dirs:
+            ppath.parent.mkdir(parents=True, exist_ok=True, mode=mode)
+            # TODO: check the permissions on the directories pebble creates and ensure we match
+
+        with _Chown(
+            path=ppath,
+            user=user,
+            user_id=user_id,
+            group=group,
+            group_id=group_id,
+            method='push',
+            on_error=lambda: None,
+        ):
+            with ppath.open('wb') as f:
+                content: Union[str, bytes] = source_io.read(self._chunk_size)
+                while content:
+                    if isinstance(content, str):
+                        content = content.encode(encoding)
+                    f.write(content)
+                    content = source_io.read(self._chunk_size)
+        os.chmod(ppath, mode)
+        return
+
         # TODO: better to do this the other way round?
         # wrap actual str/bytes in appropriate reader class?
         # wrap readers in a reader class that encodes what you read if it's a str?
@@ -321,20 +386,23 @@ class FileOps:
             try:
                 return self._container.pull(path, encoding=encoding)
             except ops.pebble.PathError as e:
-                for error in(FileNotFoundPathError, PermissionPathError):
+                for error in(FileNotFoundPathError, PermissionPathError, RelativePathError):
                     if error.matches(e):
                         raise error.from_error(e, path=path)
                 raise
+        ppath = Path(path)
+        if not ppath.is_absolute():
+            raise RelativePathError.from_path(path=ppath)
         try:
-            f = Path(path).open(
+            f = ppath.open(
                 mode='r' if encoding is not None else 'rb',
                 encoding=encoding,
                 newline='' if encoding is not None else None,
             )
         except PermissionError as e:
-            raise PermissionPathError.from_exception(e, path=path, method='pull')
+            raise PermissionPathError.from_exception(e, path=ppath, method='pull')
         except FileNotFoundError as e:
-            raise FileNotFoundPathError.from_path(path=path, method='pull')
+            raise FileNotFoundPathError.from_path(path=ppath, method='pull')
         return cast('Union[TextIO, BinaryIO]', f)
 
 

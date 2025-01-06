@@ -6,8 +6,6 @@ import file_ops
 import ops
 import pytest
 
-import file_ops._exceptions
-
 
 def get_socket_path() -> str:
     socket_path = os.getenv('PEBBLE_SOCKET')
@@ -182,6 +180,14 @@ class TestMakeDir:
         print(exception_context.value)
         assert isinstance(exception_context.value, file_ops.FileExistsPathError)
         shutil.rmtree(directory)
+
+    def test_path_not_absolute(self, container: ops.Container):
+        path = pathlib.Path('path.test')
+        with pytest.raises(ops.pebble.PathError) as exception_context:
+            file_ops.FileOps(container).make_dir(path)
+        assert isinstance(exception_context.value, file_ops.RelativePathError)
+        with pytest.raises(file_ops.RelativePathError):
+            file_ops.FileOps().make_dir(path)
 
     def test_chown_root_without_privileges(self, container: ops.Container):
         # TODO: what if we do have root privileges, like in ci?
@@ -383,6 +389,78 @@ class TestRemovePath:
         print(exception_context.value)
         #assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
 
+    def test_path_not_absolute(self, container: ops.Container):
+        path = pathlib.Path('path.test')
+        with pytest.raises(ops.pebble.PathError) as exception_context:
+            file_ops.FileOps(container).remove_path(path)
+        assert isinstance(exception_context.value, file_ops.RelativePathError)
+        with pytest.raises(file_ops.RelativePathError):
+            file_ops.FileOps().remove_path(path)
+
+
+
+@pytest.mark.skipif(
+    os.getenv('RUN_REAL_PEBBLE_TESTS') != '1',
+    reason='RUN_REAL_PEBBLE_TESTS not set',
+)
+class TestPush:
+    def test_str_ok(self, container: ops.Container):
+        directory = pathlib.Path('/tmp/pebble-test')
+        path = directory / 'path.test'
+        assert not path.exists()
+        contents = 'hello world'
+        # container
+        file_ops.FileOps(container).push(path=path, source=contents)
+        assert path.read_text() == contents
+        path.unlink()
+        # no container
+        file_ops.FileOps().push(path=path, source=contents)
+        assert path.read_text() == contents
+        path.unlink()
+
+    def test_bytes_ok(self, container: ops.Container):
+        directory = pathlib.Path('/tmp/pebble-test')
+        path = directory / 'path.test'
+        assert not path.exists()
+        contents = b'hello world'
+        # container
+        file_ops.FileOps(container).push(path=path, source=contents)
+        assert path.read_bytes() == contents
+        path.unlink()
+        # no container
+        file_ops.FileOps().push(path=path, source=contents)
+        assert path.read_bytes() == contents
+        path.unlink()
+
+    def test_file_ok(self, container: ops.Container):
+        directory = pathlib.Path('/tmp/pebble-test')
+        path = directory / 'path.test'
+        assert not path.exists()
+        contents = b'hello world'
+        source = directory / 'source.test'
+        source.write_bytes(contents)
+        # container
+        with source.open() as f:
+            file_ops.FileOps(container).push(path=path, source=f)
+        assert path.read_bytes() == contents
+        path.unlink()
+        # no container
+        with source.open() as f:
+            file_ops.FileOps().push(path=path, source=f)
+        assert path.read_bytes() == contents
+        path.unlink()
+        # cleanup
+        source.unlink()
+
+    def test_path_not_absolute(self, container: ops.Container):
+        path = pathlib.Path('path.test')
+        with pytest.raises(ops.pebble.PathError) as exception_context:
+            file_ops.FileOps(container).push(path, source='')
+        assert isinstance(exception_context.value, file_ops.RelativePathError)
+        with pytest.raises(file_ops.RelativePathError):
+            file_ops.FileOps().push(path, source='')
+
+
 
 @pytest.mark.skipif(
     os.getenv('RUN_REAL_PEBBLE_TESTS') != '1',
@@ -479,3 +557,11 @@ class TestPull:
         assert isinstance(exception_context.value, file_ops.PermissionPathError)
         # cleanup
         path.unlink()
+
+    def test_path_not_absolute(self, container: ops.Container):
+        path = pathlib.Path('path.test')
+        with pytest.raises(ops.pebble.PathError) as exception_context:
+            file_ops.FileOps(container).pull(path)
+        assert isinstance(exception_context.value, file_ops.RelativePathError)
+        with pytest.raises(file_ops.RelativePathError):
+            file_ops.FileOps().pull(path)
