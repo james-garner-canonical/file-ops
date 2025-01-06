@@ -8,6 +8,7 @@ from ._exceptions import (
     LookupPathError,
     PermissionPathError,
     RelativePathError,
+    ValueAPIError,
     ValuePathError,
 )
 
@@ -22,5 +23,6 @@ __all__ = [
     'LookupPathError',
     'PermissionPathError',
     'RelativePathError',
+    'ValueAPIError',
     'ValuePathError',
 ]

@@ -8,6 +8,7 @@ import grp
 import io
 import os
 import pwd
+import re
 import shutil
 import stat
 from contextlib import AbstractContextManager
@@ -23,6 +24,7 @@ from ._exceptions import (
     LookupPathError,
     PermissionPathError,
     RelativePathError,
+    ValueAPIError,
     ValuePathError,
 )
 
@@ -135,16 +137,27 @@ class FileOps:
             try:
                 return self._container.list_files(path, pattern=pattern, itself=itself)
             except ops.pebble.APIError as e:
-                raise FileNotFoundAPIError._from_error(e, path=path)
+                for error in (FileNotFoundAPIError, ValueAPIError):
+                    if error._matches(e):
+                        raise error._from_error(e, path=path)
+                raise
         ppath = Path(path)
         if not ppath.exists():
             raise FileNotFoundAPIError._from_path(path)
         if itself or not ppath.is_dir():
             paths = [ppath]
         else:
-            paths = ppath.iterdir()
-        if pattern is not None:
-            paths = [p for p in paths if fnmatch.fnmatch(str(p), pattern)]
+            paths = list(ppath.iterdir())
+        if paths and pattern is not None:
+            # validate pattern, but only if there are paths
+            try:
+                re.compile(pattern.replace('*', '.*').replace('?', '.?'))
+                # catch mismatched brackets etc
+            except re.error:
+                raise ValueAPIError._from_path(
+                    path=path, message=f'syntax error in pattern "{pattern}"'
+                )
+            paths = [p for p in paths if fnmatch.fnmatch(str(p.name), pattern)]
         return [_path_to_fileinfo(p) for p in paths]
 
     def make_dir(
@@ -332,7 +345,7 @@ class FileOps:
             group=group,
             group_id=group_id,
             method='push',
-            on_error=lambda: None,
+            on_error=lambda: None,  # TODO: delete file on error?
         ):
             with ppath.open('wb') as f:
                 content: Union[str, bytes] = source_io.read(self._chunk_size)
