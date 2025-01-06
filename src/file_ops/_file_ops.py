@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 from __future__ import annotations
 
 import datetime
@@ -133,10 +135,10 @@ class FileOps:
             try:
                 return self._container.list_files(path, pattern=pattern, itself=itself)
             except ops.pebble.APIError as e:
-                raise FileNotFoundAPIError.from_error(e, path=path)
+                raise FileNotFoundAPIError._from_error(e, path=path)
         ppath = Path(path)
         if not ppath.exists():
-            raise FileNotFoundAPIError.from_path(path)
+            raise FileNotFoundAPIError._from_path(path)
         if itself or not ppath.is_dir():
             paths = [ppath]
         else:
@@ -176,12 +178,12 @@ class FileOps:
                     RelativePathError,
                     ValuePathError,
                 ):
-                    if error.matches(e):
-                        raise error.from_error(e, path=path)
+                    if error._matches(e):
+                        raise error._from_error(e, path=path)
                 raise
         directory = Path(path)
         if not directory.is_absolute():
-            raise RelativePathError.from_path(path=directory)
+            raise RelativePathError._from_path(path=directory)
         with _Chown(
             path=directory,
             user=user,
@@ -199,27 +201,27 @@ class FileOps:
                     exist_ok=make_parents,
                 )
             except FileExistsError:
-                raise FileExistsPathError.from_path(path=path, method='mkdir')
+                raise FileExistsPathError._from_path(path=path, method='mkdir')
             except FileNotFoundError:
-                raise FileNotFoundPathError.from_path(path=path, method='mkdir')
+                raise FileNotFoundPathError._from_path(path=path, method='mkdir')
         return
         # raise mismatch errors before creating directory
         try:
             user_arg = _get_user_arg(str_name=user, int_id=user_id)
             group_arg = _get_group_arg(str_name=group, int_id=group_id)
         except KeyError as e:
-            raise LookupPathError.from_exception(e, path=path, method='mkdir')
+            raise LookupPathError._from_exception(e, path=path, method='mkdir')
         except ValueError as e:
-            raise ValuePathError.from_path(path=path, method='mkdir', message=str(e))
+            raise ValuePathError._from_path(path=path, method='mkdir', message=str(e))
         if user_arg is None and group_arg is not None:
-            raise ValuePathError.from_path(
+            raise ValuePathError._from_path(
                 path=path,
                 method='mkdir',
                 message='cannot look up user and group: must specify user, not just group',
             )
         if isinstance(user_arg, int) and group_arg is None:
             # TODO: patch pebble so that this isn't an error case
-            raise ValuePathError.from_path(
+            raise ValuePathError._from_path(
                 path=path,
                 method='mkdir',
                 message='cannot look up user and group: must specify group, not just UID',
@@ -233,17 +235,17 @@ class FileOps:
                 exist_ok=make_parents,
             )
         except FileExistsError:
-            raise FileExistsPathError.from_path(path=path, method='mkdir')
+            raise FileExistsPathError._from_path(path=path, method='mkdir')
         except FileNotFoundError:
-            raise FileNotFoundPathError.from_path(path=path, method='mkdir')
+            raise FileNotFoundPathError._from_path(path=path, method='mkdir')
         try:
             _try_chown(directory, user=user_arg, group=group_arg)
         except KeyError as e:
             directory.rmdir()
-            raise LookupPathError.from_exception(e, path=path, method='mkdir')
+            raise LookupPathError._from_exception(e, path=path, method='mkdir')
         except PermissionError as e:
             directory.rmdir()
-            raise PermissionPathError.from_exception(e, path=path, method='mkdir')
+            raise PermissionPathError._from_exception(e, path=path, method='mkdir')
 
     def push_path(
         self,
@@ -265,12 +267,12 @@ class FileOps:
                 return self._container.remove_path(path, recursive=recursive)
             except ops.pebble.PathError as e:
                 for error in (FileNotFoundPathError, RelativePathError, ValuePathError):
-                    if error.matches(e):
-                        raise error.from_error(e, path=path)
+                    if error._matches(e):
+                        raise error._from_error(e, path=path)
                 raise
         ppath = Path(path)
         if not ppath.is_absolute():
-            raise RelativePathError.from_path(path=ppath)
+            raise RelativePathError._from_path(path=ppath)
         raise NotImplementedError()
 
     def push(
@@ -301,13 +303,13 @@ class FileOps:
                 )
             except ops.pebble.PathError as e:
                 for error in (RelativePathError,):
-                    if error.matches(e):
-                        raise error.from_error(e, path=path)
+                    if error._matches(e):
+                        raise error._from_error(e, path=path)
                 raise
 
         ppath = Path(path)
         if not ppath.is_absolute():
-            raise RelativePathError.from_path(path=ppath)
+            raise RelativePathError._from_path(path=ppath)
 
         source_io: io.StringIO | io.BytesIO | BinaryIO | TextIO
         if isinstance(source, str):
@@ -387,12 +389,12 @@ class FileOps:
                 return self._container.pull(path, encoding=encoding)
             except ops.pebble.PathError as e:
                 for error in(FileNotFoundPathError, PermissionPathError, RelativePathError):
-                    if error.matches(e):
-                        raise error.from_error(e, path=path)
+                    if error._matches(e):
+                        raise error._from_error(e, path=path)
                 raise
         ppath = Path(path)
         if not ppath.is_absolute():
-            raise RelativePathError.from_path(path=ppath)
+            raise RelativePathError._from_path(path=ppath)
         try:
             f = ppath.open(
                 mode='r' if encoding is not None else 'rb',
@@ -400,9 +402,9 @@ class FileOps:
                 newline='' if encoding is not None else None,
             )
         except PermissionError as e:
-            raise PermissionPathError.from_exception(e, path=ppath, method='pull')
+            raise PermissionPathError._from_exception(e, path=ppath, method='pull')
         except FileNotFoundError as e:
-            raise FileNotFoundPathError.from_path(path=ppath, method='pull')
+            raise FileNotFoundPathError._from_path(path=ppath, method='pull')
         return cast('Union[TextIO, BinaryIO]', f)
 
 
@@ -421,18 +423,18 @@ class _Chown(AbstractContextManager['_Chown', None]):
             user_arg = _get_user_arg(str_name=user, int_id=user_id)
             group_arg = _get_group_arg(str_name=group, int_id=group_id)
         except KeyError as e:
-            raise LookupPathError.from_exception(e, path=path, method='mkdir')
+            raise LookupPathError._from_exception(e, path=path, method='mkdir')
         except ValueError as e:
-            raise ValuePathError.from_path(path=path, method='mkdir', message=str(e))
+            raise ValuePathError._from_path(path=path, method='mkdir', message=str(e))
         if user_arg is None and group_arg is not None:
-            raise ValuePathError.from_path(
+            raise ValuePathError._from_path(
                 path=path,
                 method='mkdir',
                 message='cannot look up user and group: must specify user, not just group',
             )
         if isinstance(user_arg, int) and group_arg is None:
             # TODO: patch pebble so that this isn't an error case
-            raise ValuePathError.from_path(
+            raise ValuePathError._from_path(
                 path=path,
                 method='mkdir',
                 message='cannot look up user and group: must specify group, not just UID',
@@ -455,10 +457,10 @@ class _Chown(AbstractContextManager['_Chown', None]):
             _try_chown(self.path, user=self.user_arg, group=self.group_arg)
         except KeyError as e:
             self.on_error()
-            raise LookupPathError.from_exception(e, path=self.path, method=self.method)
+            raise LookupPathError._from_exception(e, path=self.path, method=self.method)
         except PermissionError as e:
             self.on_error()
-            raise PermissionPathError.from_exception(e, path=self.path, method=self.method)
+            raise PermissionPathError._from_exception(e, path=self.path, method=self.method)
 
 
 def _get_user_arg(str_name: str | None, int_id: int | None) -> str | int | None:

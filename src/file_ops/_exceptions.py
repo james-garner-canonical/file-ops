@@ -24,8 +24,8 @@ class FileNotFoundAPIError(ops.pebble.APIError, builtins.FileNotFoundError):
         return ops.pebble.APIError.__str__(self)
 
     @classmethod
-    def from_error(cls, error: ops.pebble.APIError, path: PurePath | str) -> Self:
-        assert cls.matches(error)
+    def _from_error(cls, error: ops.pebble.APIError, path: PurePath | str) -> Self:
+        assert cls._matches(error)
         return cls(
             body=error.body,
             code=error.code,
@@ -35,7 +35,7 @@ class FileNotFoundAPIError(ops.pebble.APIError, builtins.FileNotFoundError):
         )
 
     @classmethod
-    def from_path(cls, path: PurePath | str) -> Self:
+    def _from_path(cls, path: PurePath | str) -> Self:
         method = 'stat'
         code = 404
         status = 'Not Found'
@@ -49,7 +49,7 @@ class FileNotFoundAPIError(ops.pebble.APIError, builtins.FileNotFoundError):
         return cls(body=body, code=code, status=status, message=message, file=str(path))
 
     @classmethod
-    def matches(cls, error: ops.pebble.Error) -> bool:
+    def _matches(cls, error: ops.pebble.Error) -> bool:
         return isinstance(error, ops.pebble.APIError) and error.code == 404
 
 
@@ -61,12 +61,12 @@ class FileNotFoundPathError(ops.pebble.PathError, builtins.FileNotFoundError):
         ops.pebble.PathError.__init__(self, kind=kind, message=message)
 
     @classmethod
-    def from_error(cls, error: ops.pebble.PathError, path: PurePath | str) -> Self:
-        assert cls.matches(error)
+    def _from_error(cls, error: ops.pebble.PathError, path: PurePath | str) -> Self:
+        assert cls._matches(error)
         return cls(kind=error.kind, message=error.message, file=str(path))
 
     @classmethod
-    def from_path(cls, path: PurePath | str, method: str) -> Self:
+    def _from_path(cls, path: PurePath | str, method: str) -> Self:
         return cls(
             kind='not-found',
             message=f'{method} {path}: no such file or directory',
@@ -74,7 +74,7 @@ class FileNotFoundPathError(ops.pebble.PathError, builtins.FileNotFoundError):
         )
 
     @classmethod
-    def matches(cls, error: ops.pebble.Error) -> bool:
+    def _matches(cls, error: ops.pebble.Error) -> bool:
         return isinstance(error, ops.pebble.PathError) and error.kind == 'not-found'
 
 
@@ -86,12 +86,12 @@ class FileExistsPathError(ops.pebble.PathError, builtins.FileExistsError):
         ops.pebble.PathError.__init__(self, kind=kind, message=message)
 
     @classmethod
-    def from_error(cls, error: ops.pebble.PathError, path: PurePath | str) -> Self:
-        assert cls.matches(error)
+    def _from_error(cls, error: ops.pebble.PathError, path: PurePath | str) -> Self:
+        assert cls._matches(error)
         return cls(kind=error.kind, message=error.message, file=str(path))
 
     @classmethod
-    def from_path(cls, path: PurePath | str, method: str) -> Self:
+    def _from_path(cls, path: PurePath | str, method: str) -> Self:
         return cls(
             kind='generic-file-error',
             message=f'{method} {path}: file exists',
@@ -99,7 +99,7 @@ class FileExistsPathError(ops.pebble.PathError, builtins.FileExistsError):
         )
 
     @classmethod
-    def matches(cls, error: ops.pebble.Error) -> bool:
+    def _matches(cls, error: ops.pebble.Error) -> bool:
         return (
             isinstance(error, ops.pebble.PathError)
             and error.kind == 'generic-file-error'
@@ -115,12 +115,12 @@ class LookupPathError(ops.pebble.PathError, builtins.LookupError):
         ops.pebble.PathError.__init__(self, kind=kind, message=message)
 
     @classmethod
-    def from_error(cls, error: ops.pebble.PathError, path: PurePath | str) -> Self:
-        assert cls.matches(error)
+    def _from_error(cls, error: ops.pebble.PathError, path: PurePath | str) -> Self:
+        assert cls._matches(error)
         return cls(kind=error.kind, message=error.message)
 
     @classmethod
-    def from_exception(
+    def _from_exception(
         cls, error: builtins.LookupError | builtins.KeyError, path: PurePath | str, method: str
     ) -> Self:
         return cls(
@@ -129,7 +129,7 @@ class LookupPathError(ops.pebble.PathError, builtins.LookupError):
         )
 
     @classmethod
-    def matches(cls, error: ops.pebble.Error) -> bool:
+    def _matches(cls, error: ops.pebble.Error) -> bool:
         return (
             isinstance(error, ops.pebble.PathError)
             and error.kind == 'generic-file-error'
@@ -145,12 +145,12 @@ class PermissionPathError(ops.pebble.PathError, builtins.PermissionError):
         ops.pebble.PathError.__init__(self, kind=kind, message=message)
 
     @classmethod
-    def from_error(cls, error: ops.pebble.PathError, path: PurePath | str) -> Self:
-        assert cls.matches(error)
+    def _from_error(cls, error: ops.pebble.PathError, path: PurePath | str) -> Self:
+        assert cls._matches(error)
         return cls(kind=error.kind, message=error.message, error_number=errno.EPERM, file=str(path))
 
     @classmethod
-    def from_exception(cls, error: builtins.PermissionError | builtins.KeyError, path: PurePath | str, method: str) -> Self:
+    def _from_exception(cls, error: builtins.PermissionError | builtins.KeyError, path: PurePath | str, method: str) -> Self:
         error_number = getattr(error, 'errno', None) or errno.EPERM
         return cls(
             kind='permission-denied',
@@ -160,7 +160,7 @@ class PermissionPathError(ops.pebble.PathError, builtins.PermissionError):
         )
 
     @classmethod
-    def matches(cls, error: ops.pebble.Error) -> bool:
+    def _matches(cls, error: ops.pebble.Error) -> bool:
         return isinstance(error, ops.pebble.PathError) and error.kind == 'permission-denied'
 
 
@@ -169,19 +169,19 @@ class RelativePathError(ops.pebble.PathError):
         super().__init__(kind=kind, message=message)
 
     @classmethod
-    def from_error(cls, error: ops.pebble.PathError, path: PurePath | str) -> Self:
-        assert cls.matches(error)
+    def _from_error(cls, error: ops.pebble.PathError, path: PurePath | str) -> Self:
+        assert cls._matches(error)
         return cls(kind=error.kind, message=error.message)
 
     @classmethod
-    def from_path(cls, path: PurePath | str) -> Self:
+    def _from_path(cls, path: PurePath | str) -> Self:
         return cls(
             kind='generic-file-error',
             message=f'paths must be absolute, got "{path}"',
         )
 
     @classmethod
-    def matches(cls, error: ops.pebble.Error) -> bool:
+    def _matches(cls, error: ops.pebble.Error) -> bool:
         return (
             isinstance(error, ops.pebble.PathError)
             and error.kind == 'generic-file-error'
@@ -197,12 +197,12 @@ class ValuePathError(ops.pebble.PathError, builtins.ValueError):
         ops.pebble.PathError.__init__(self, kind=kind, message=message)
 
     @classmethod
-    def from_error(cls, error: ops.pebble.PathError, path: PurePath | str) -> Self:
-        assert cls.matches(error)
+    def _from_error(cls, error: ops.pebble.PathError, path: PurePath | str) -> Self:
+        assert cls._matches(error)
         return cls(kind=error.kind, message=error.message, file=str(path))
 
     @classmethod
-    def from_path(cls, path: PurePath | str, method: str, message: str) -> Self:
+    def _from_path(cls, path: PurePath | str, method: str, message: str) -> Self:
         return cls(
             kind='generic-file-error',
             message=f'{method} {path}: {message}',
@@ -210,12 +210,12 @@ class ValuePathError(ops.pebble.PathError, builtins.ValueError):
         )
 
     @classmethod
-    def matches(cls, error: ops.pebble.Error) -> bool:
+    def _matches(cls, error: ops.pebble.Error) -> bool:
         return (
             isinstance(error, ops.pebble.PathError)
             and error.kind == 'generic-file-error'
             and not any(
-                e.matches(error)
+                e._matches(error)  # pyright: ignore[reportPrivateUsage]
                 for e in (FileExistsPathError, LookupPathError, RelativePathError)
             )
         )
