@@ -284,7 +284,7 @@ class FileOps:
                 )
             except ops.pebble.PathError as e:
                 # TODO: we'll need to cover at least all the same cases as make_dir I think
-                for error in (RelativePathError,):
+                for error in (FileNotFoundPathError, RelativePathError):
                     if error._matches(e):
                         raise error._from_error(e, path=path)
                 raise
@@ -304,7 +304,8 @@ class FileOps:
 
         mode = permissions if permissions is not None else 0o644  # Pebble default
         if make_dirs:
-            ppath.parent.mkdir(parents=True, exist_ok=True, mode=mode)
+            ppath.parent.mkdir(parents=True, exist_ok=True, mode=mode | 0o100)
+            # we need execute permissions to write to the directory
             # TODO: check the permissions on the directories pebble creates and ensure we match
 
         with _Chown(
@@ -314,8 +315,12 @@ class FileOps:
             group=group,
             group_id=group_id,
             method='push',
-            on_error=lambda: None,  # TODO: delete file on error?
+            on_error=lambda: None,  # TODO: delete file on error? what about created directories? check pebble behaviour
         ):
+            try:
+                ppath.touch(mode=mode)
+            except FileNotFoundError:
+                raise FileNotFoundPathError._from_path(path, method='open')
             with ppath.open('wb') as f:
                 content: Union[str, bytes] = source_io.read(self._chunk_size)
                 while content:
@@ -323,7 +328,6 @@ class FileOps:
                         content = content.encode(encoding)
                     f.write(content)
                     content = source_io.read(self._chunk_size)
-        os.chmod(ppath, mode)
 
     @overload
     def pull(self, path: str | PurePath, *, encoding: None) -> BinaryIO:

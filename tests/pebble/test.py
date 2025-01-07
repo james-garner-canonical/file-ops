@@ -50,7 +50,7 @@ def text_files() -> dict[str, str]:
 def interesting_dir(tmp_path: pathlib.Path, text_files: dict[str, str]) -> 'Iterator[pathlib.Path]':
     (tmp_path / 'empty_dir').mkdir()
     empty_file = (tmp_path / 'empty_file.bin')
-    empty_file.write_bytes(b'')
+    empty_file.touch()
     (tmp_path / 'symlink.bin').symlink_to(empty_file)
     (tmp_path / 'symlink_dir').symlink_to(tmp_path / 'empty_dir')
     (tmp_path / 'symlink_rec').symlink_to(tmp_path)
@@ -510,6 +510,20 @@ class TestMakeDir:
 class TestRemovePath:
     @staticmethod
     def test_target_doesnt_exist(container: ops.Container, tmp_path: pathlib.Path):
+        file = tmp_path / 'doesnt_exist'
+        # with container
+        with pytest.raises(ops.pebble.PathError) as exception_context:
+            file_ops.FileOps(container).remove_path(file)
+        print(exception_context.value)
+        assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
+        # without container
+        with pytest.raises(FileNotFoundError) as exception_context:
+            file_ops.FileOps().remove_path(file)
+        print(exception_context.value)
+        assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
+
+    @staticmethod
+    def test_target_parent_doesnt_exist(container: ops.Container, tmp_path: pathlib.Path):
         file = tmp_path / 'does/not/exist'
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
@@ -530,7 +544,6 @@ class TestRemovePath:
         assert isinstance(exception_context.value, file_ops.RelativePathError)
         with pytest.raises(file_ops.RelativePathError):
             file_ops.FileOps().remove_path(path)
-
 
 
 @pytest.mark.skipif(
@@ -611,6 +624,47 @@ class TestPush:
         with pytest.raises(file_ops.RelativePathError):
             file_ops.FileOps().push(path, source='')
 
+    @staticmethod
+    def test_subdirectory_make_dirs(container: ops.Container, tmp_path: pathlib.Path):
+        directory = tmp_path / 'directory'
+        subdirectory = directory / 'subdirectory'
+        path = subdirectory / 'path.test'
+        contents = 'hello world'
+        # container
+        file_ops.FileOps(container).push(path=path, source=contents, make_dirs=True)
+        assert path.read_text() == contents
+        path.unlink()
+        subdirectory.rmdir()
+        directory.rmdir()
+        # no container
+        assert not path.exists()
+        assert not subdirectory.exists()
+        assert not directory.exists()
+        file_ops.FileOps().push(path=path, source=contents, make_dirs=True)
+        assert path.read_text() == contents
+
+    @staticmethod
+    def test_subdirectory_no_make_dirs(container: ops.Container, tmp_path: pathlib.Path):
+        directory = tmp_path / 'directory'
+        subdirectory = directory / 'subdirectory'
+        path = subdirectory / 'path.test'
+        contents = 'hello world'
+        # container
+        with pytest.raises(ops.pebble.PathError) as exception_context:
+            file_ops.FileOps(container).push(path=path, source=contents)
+        print(exception_context.value)
+        assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
+        assert not path.exists()
+        assert not subdirectory.exists()
+        assert not directory.exists()
+        # no container
+        with pytest.raises(FileNotFoundError) as exception_context:
+            file_ops.FileOps().make_dir(subdirectory)
+        print(exception_context.value)
+        assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
+        assert not path.exists()
+        assert not subdirectory.exists()
+        assert not directory.exists()
 
 
 @pytest.mark.skipif(

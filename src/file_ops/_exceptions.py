@@ -85,10 +85,7 @@ class ValueAPIError(ops.pebble.APIError, builtins.ValueError):
 
     @classmethod
     def _matches(cls, error: ops.pebble.Error) -> bool:
-        return (
-            isinstance(error, ops.pebble.APIError)
-            and error.code == 400
-        )
+        return isinstance(error, ops.pebble.APIError) and error.code == 400
 
 
 class FileNotFoundPathError(ops.pebble.PathError, builtins.FileNotFoundError):
