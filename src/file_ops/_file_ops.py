@@ -217,48 +217,6 @@ class FileOps:
                 raise FileExistsPathError._from_path(path=path, method='mkdir')
             except FileNotFoundError:
                 raise FileNotFoundPathError._from_path(path=path, method='mkdir')
-        return
-        # raise mismatch errors before creating directory
-        try:
-            user_arg = _get_user_arg(str_name=user, int_id=user_id)
-            group_arg = _get_group_arg(str_name=group, int_id=group_id)
-        except KeyError as e:
-            raise LookupPathError._from_exception(e, path=path, method='mkdir')
-        except ValueError as e:
-            raise ValuePathError._from_path(path=path, method='mkdir', message=str(e))
-        if user_arg is None and group_arg is not None:
-            raise ValuePathError._from_path(
-                path=path,
-                method='mkdir',
-                message='cannot look up user and group: must specify user, not just group',
-            )
-        if isinstance(user_arg, int) and group_arg is None:
-            # TODO: patch pebble so that this isn't an error case
-            raise ValuePathError._from_path(
-                path=path,
-                method='mkdir',
-                message='cannot look up user and group: must specify group, not just UID',
-            )
-        directory = Path(path)
-        try:
-            directory.mkdir(
-                parents=make_parents,
-                mode=permissions if permissions is not None else 0o755,  # Pebble default
-                # https://ops.readthedocs.io/en/latest/reference/pebble.html#ops.pebble.Client.make_dir
-                exist_ok=make_parents,
-            )
-        except FileExistsError:
-            raise FileExistsPathError._from_path(path=path, method='mkdir')
-        except FileNotFoundError:
-            raise FileNotFoundPathError._from_path(path=path, method='mkdir')
-        try:
-            _try_chown(directory, user=user_arg, group=group_arg)
-        except KeyError as e:
-            directory.rmdir()
-            raise LookupPathError._from_exception(e, path=path, method='mkdir')
-        except PermissionError as e:
-            directory.rmdir()
-            raise PermissionPathError._from_exception(e, path=path, method='mkdir')
 
     def push_path(
         self,
@@ -355,35 +313,6 @@ class FileOps:
                     f.write(content)
                     content = source_io.read(self._chunk_size)
         os.chmod(ppath, mode)
-        return
-
-        # TODO: better to do this the other way round?
-        # wrap actual str/bytes in appropriate reader class?
-        # wrap readers in a reader class that encodes what you read if it's a str?
-        # read and write to the file in chunks instead of all at once?
-        # but if we have the actual content just write it all at once?
-        try:
-            source.read  # type: ignore
-        except AttributeError:
-            source = cast('bytes | str', source)
-        else:
-            source = cast('BinaryIO | TextIO', source)
-            source = source.read()
-        if isinstance(source, str):
-            source = source.encode(encoding=encoding)
-        mode = permissions if permissions is not None else 0o644  # Pebble default
-        # https://ops.readthedocs.io/en/latest/reference/pebble.html#ops.pebble.Client.push
-        # TODO: does it make sense to apply all the permissions to the directory? probably for read/write, but what about execute?
-        if make_dirs:
-            ppath.parent.mkdir(parents=True, exist_ok=True, mode=mode)
-            # TODO: do we need to chown any directories created?
-        #TODO: else: error if not make_dirs and directory doesn't exist?
-        ppath.write_bytes(source)
-        # TODO: correct and test chown error handling following make_dir
-        user_arg = _get_user_arg(str_name=user, int_id=user_id)
-        group_arg = _get_group_arg(str_name=group, int_id=group_id)
-        _try_chown(ppath, user=user_arg, group=group_arg)
-        # TODO: chmod
 
     @overload
     def pull(self, path: str | PurePath, *, encoding: None) -> BinaryIO:
