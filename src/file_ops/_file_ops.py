@@ -205,26 +205,15 @@ class FileOps:
         directory = Path(path)
         if not directory.is_absolute():
             raise RelativePathError._from_path(path=directory)
-        with _Chown(
+        _make_dir(
             path=directory,
             user=user,
             user_id=user_id,
             group=group,
             group_id=group_id,
-            method='mkdir',
-            on_error=directory.rmdir,
-        ):
-            try:
-                directory.mkdir(
-                    parents=make_parents,
-                    mode=permissions if permissions is not None else 0o755,  # Pebble default
-                    # https://ops.readthedocs.io/en/latest/reference/pebble.html#ops.pebble.Client.make_dir
-                    exist_ok=make_parents,
-                )
-            except FileExistsError:
-                raise FileExistsPathError._from_path(path=path, method='mkdir')
-            except FileNotFoundError:
-                raise FileNotFoundPathError._from_path(path=path, method='mkdir')
+            make_parents=make_parents,
+            mode=permissions if permissions is not None else 0o755,  # Pebble default
+        )
 
     def push_path(
         self,
@@ -302,11 +291,11 @@ class FileOps:
             assert not isinstance(source, (bytearray, memoryview))
             source_io = source
 
-        mode = permissions if permissions is not None else 0o644  # Pebble default
         if make_dirs:
-            ppath.parent.mkdir(parents=True, exist_ok=True, mode=mode | 0o100)
-            # we need execute permissions to write to the directory
+            dirmode = permissions if permissions is not None else 0o755  # Pebble default  for make_dir
+            dirmode |= 0o100  # we need at least execute permissions for the user to actually push the file
             # TODO: check the permissions on the directories pebble creates and ensure we match
+            ppath.parent.mkdir(parents=True, exist_ok=True, mode=dirmode)
 
         with _Chown(
             path=ppath,
@@ -318,16 +307,11 @@ class FileOps:
             on_error=lambda: None,  # TODO: delete file on error? what about created directories? check pebble behaviour
         ):
             try:
-                ppath.touch(mode=mode)
+                ppath.touch(mode=0o600)
             except FileNotFoundError:
                 raise FileNotFoundPathError._from_path(path, method='open')
-            with ppath.open('wb') as f:
-                content: Union[str, bytes] = source_io.read(self._chunk_size)
-                while content:
-                    if isinstance(content, str):
-                        content = content.encode(encoding)
-                    f.write(content)
-                    content = source_io.read(self._chunk_size)
+            _write_chunked(path=ppath, source_io=source_io, chunk_size=self._chunk_size, encoding=encoding)
+        os.chmod(ppath, mode=permissions if permissions is not None else 0o644)  # Pebble default
 
     @overload
     def pull(self, path: str | PurePath, *, encoding: None) -> BinaryIO:
@@ -509,6 +493,45 @@ _FT_MAP: dict[int, ops.pebble.FileType] = {
 }
 
 
+def _make_dir(
+    path: Path,
+    user: str | None,
+    user_id: int | None,
+    group: str | None,
+    group_id: int | None,
+    make_parents: bool,
+    mode: int,
+):
+    """As pathlib.Path.mkdir, but handles chown and propagates mode to parents."""
+    with _Chown(
+        path=path,
+        user=user,
+        user_id=user_id,
+        group=group,
+        group_id=group_id,
+        method='mkdir',
+        on_error=path.rmdir,
+    ):
+        try:
+            os.mkdir(path, mode)
+        except FileNotFoundError:
+            if not make_parents or path.parent == path:
+                raise FileNotFoundPathError._from_path(path=path, method='mkdir')
+            _make_dir(
+                path.parent,
+                user=user,
+                user_id=user_id,
+                group=group,
+                group_id=group_id,
+                make_parents=True,
+                mode=mode,
+            )
+            os.mkdir(path, mode)
+        except FileExistsError:
+            if not make_parents:
+                raise FileExistsPathError._from_path(path=path, method='mkdir')
+
+
 def _try_remove(path: Path, recursive: bool) -> None:
     if not path.is_dir():
         path.unlink()
@@ -521,6 +544,16 @@ def _try_remove(path: Path, recursive: bool) -> None:
             raise  # TODO: OSPathError? DirectoryNotEmptyError?
         for p in path.iterdir():
             _try_remove(p, recursive=True)
+
+
+def _write_chunked(path: Path, source_io: BinaryIO | TextIO, chunk_size: int, encoding: str) -> None:
+    with path.open('wb') as f:
+        content: Union[str, bytes] = source_io.read(chunk_size)
+        while content:
+            if isinstance(content, str):
+                content = content.encode(encoding)
+            f.write(content)
+            content = source_io.read(chunk_size)
 
 
 # type checking

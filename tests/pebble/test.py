@@ -10,10 +10,14 @@ from typing import TYPE_CHECKING
 import file_ops
 import ops
 import pytest
+from file_ops._file_ops import _path_to_fileinfo  # pyright: ignore[reportPrivateUsage]
 
 if TYPE_CHECKING:
     from typing import Iterator
 
+
+DEBUG: bool = True
+"""Write debugging info to files during tests."""
 
 @pytest.fixture
 def container() -> ops.Container:
@@ -78,12 +82,11 @@ class TestListFiles:
         without_container = file_ops.FileOps().list_files(interesting_dir)
         with_container.sort(key=lambda fileinfo: fileinfo.name)
         without_container.sort(key=lambda fileinfo: fileinfo.name)
-        # debugging start
-        out = pathlib.Path('.tmp') / 'list_files_ok.py'
-        out.parent.mkdir(exist_ok=True)
-        out.write_text(f'{with_container=}\n{without_container=}')
-        subprocess.run(['ruff', 'format', '--config', 'line-length=200', str(out)])
-        # debugging end
+        write_for_debugging(
+            'list_files_ok',
+            with_container=with_container,
+            without_container=without_container,
+        )
         with unittest.mock.patch.object(ops.pebble.FileInfo, '__eq__', fileinfo_eq):
             assert with_container == without_container
 
@@ -112,12 +115,11 @@ class TestListFiles:
         without_container = file_ops.FileOps().list_files(interesting_dir, pattern=pattern)
         with_container.sort(key=lambda fileinfo: fileinfo.name)
         without_container.sort(key=lambda fileinfo: fileinfo.name)
-        # debugging start
-        out = pathlib.Path('.tmp') / f'list_files_pattern_ok_{"".join(c if c.isalnum() else "_" for c in pattern)}.py'
-        out.parent.mkdir(exist_ok=True)
-        out.write_text(f'{pattern=}\n{with_container=}\n{without_container=}')
-        subprocess.run(['ruff', 'format', '--config', 'line-length=200', str(out)])
-        # debugging end
+        write_for_debugging(
+            f'list_files_pattern_ok_{"".join(c if c.isalnum() else "_" for c in pattern)}',
+            with_container=with_container,
+            without_container=without_container,
+        )
         with unittest.mock.patch.object(ops.pebble.FileInfo, '__eq__', fileinfo_eq):
             assert with_container == without_container
 
@@ -181,12 +183,11 @@ class TestListFiles:
         without_container = file_ops.FileOps().list_files(interesting_dir, pattern=pattern)
         with_container.sort(key=lambda fileinfo: fileinfo.name)
         without_container.sort(key=lambda fileinfo: fileinfo.name)
-        # debugging start
-        out = pathlib.Path('.tmp') / 'list_files_itself_pattern_ok.py'
-        out.parent.mkdir(exist_ok=True)
-        out.write_text(f'{with_container=}\n{without_container=}')
-        subprocess.run(['ruff', 'format', '--config', 'line-length=200', str(out)])
-        # debugging end
+        write_for_debugging(
+            'list_files_itself_pattern_ok',
+            with_container=with_container,
+            without_container=without_container,
+        )
         with unittest.mock.patch.object(ops.pebble.FileInfo, '__eq__', fileinfo_eq):
             assert with_container == without_container
 
@@ -197,12 +198,11 @@ class TestListFiles:
         without_container = file_ops.FileOps().list_files(interesting_dir, pattern=pattern)
         with_container.sort(key=lambda fileinfo: fileinfo.name)
         without_container.sort(key=lambda fileinfo: fileinfo.name)
-        # debugging start
-        out = pathlib.Path('.tmp') / 'list_files_itself_pattern_no_matches.py'
-        out.parent.mkdir(exist_ok=True)
-        out.write_text(f'{with_container=}\n{without_container=}')
-        subprocess.run(['ruff', 'format', '--config', 'line-length=200', str(out)])
-        # debugging end
+        write_for_debugging(
+            'list_files_itself_pattern_no_matches',
+            with_container=with_container,
+            without_container=without_container,
+        )
         with unittest.mock.patch.object(ops.pebble.FileInfo, '__eq__', fileinfo_eq):
             assert with_container == without_container
 
@@ -266,14 +266,32 @@ class TestMakeDir:
         directory = tmp_path / 'directory'
         subdirectory = directory / 'subdirectory'
         # container
+        assert not directory.exists()
+        assert not subdirectory.exists()
         file_ops.FileOps(container).make_dir(subdirectory, make_parents=True)
         assert subdirectory.exists()
-        shutil.rmtree(directory)
-        # no container
-        file_ops.FileOps().make_dir(directory, make_parents=True)
         assert directory.exists()
+        info_sub_c = _path_to_fileinfo(subdirectory)
+        info_dir_c = _path_to_fileinfo(directory)
         # cleanup
         shutil.rmtree(directory)
+        # no container
+        assert not directory.exists()
+        assert not subdirectory.exists()
+        file_ops.FileOps().make_dir(subdirectory, make_parents=True)
+        assert subdirectory.exists()
+        assert directory.exists()
+        info_sub = _path_to_fileinfo(subdirectory)
+        info_dir = _path_to_fileinfo(directory)
+        write_for_debugging(
+            'make_dir_subdirectory_make_parents',
+            info_sub_c=info_sub_c,
+            info_sub=info_sub,
+            info_dir_c=info_dir_c,
+            info_dir=info_dir,
+        )
+        assert_fileinfo_eq(info_sub, info_sub_c)
+        assert_fileinfo_eq(info_dir, info_dir_c)
 
     @staticmethod
     def test_subdirectory_no_make_parents(container: ops.Container, tmp_path: pathlib.Path):
@@ -383,7 +401,7 @@ class TestMakeDir:
         assert not pathlib.Path(directory).exists()
 
     @staticmethod
-    def test_just_user(container: ops.Container, tmp_path: pathlib.Path):
+    def test_chown_just_user(container: ops.Container, tmp_path: pathlib.Path):
         directory = tmp_path / 'directory'
         # TODO: user that exists
         user_name = 'user'
@@ -397,7 +415,7 @@ class TestMakeDir:
         directory.rmdir()
 
     @staticmethod
-    def test_just_user_id(container: ops.Container, tmp_path: pathlib.Path):
+    def test_chown_just_user_id(container: ops.Container, tmp_path: pathlib.Path):
         directory = tmp_path / 'directory'
         # TODO: user that exists
         user_id = 1000
@@ -413,7 +431,7 @@ class TestMakeDir:
         assert isinstance(exception_context.value, file_ops.ValuePathError)
 
     @staticmethod
-    def test_just_group_name(container: ops.Container, tmp_path: pathlib.Path):
+    def test_chown_just_group_name(container: ops.Container, tmp_path: pathlib.Path):
         directory = tmp_path / 'directory'
         # TODO: user that exists
         group = 'user'
@@ -429,7 +447,7 @@ class TestMakeDir:
         assert isinstance(exception_context.value, file_ops.ValuePathError)
 
     @staticmethod
-    def test_just_group_id(container: ops.Container, tmp_path: pathlib.Path):
+    def test_chown_just_group_id(container: ops.Container, tmp_path: pathlib.Path):
         directory = tmp_path / 'directory'
         # TODO: user that exists
         group_id = 1000
@@ -445,7 +463,7 @@ class TestMakeDir:
         assert isinstance(exception_context.value, file_ops.ValuePathError)
 
     @staticmethod
-    def test_just_group_args(container: ops.Container, tmp_path: pathlib.Path):
+    def test_chown_just_group_args(container: ops.Container, tmp_path: pathlib.Path):
         directory = tmp_path / 'directory'
         # TODO: user that exists
         group = 'user'
@@ -768,3 +786,18 @@ def fileinfo_eq(self: ops.pebble.FileInfo, other: ops.pebble.FileInfo) -> bool:
         for name in dir(self)
         if not name.startswith('_')
     )
+
+
+def assert_fileinfo_eq(self: ops.pebble.FileInfo, other: ops.pebble.FileInfo) -> None:
+    for name in dir(self):
+        if name.startswith('_'):
+            continue
+        assert (name, getattr(self, name)) == (name, getattr(other, name))
+
+
+def write_for_debugging(identifier: str, **kwargs: object):
+    if DEBUG:
+        out = pathlib.Path('.tmp') / f'{identifier}.py'
+        out.parent.mkdir(exist_ok=True)
+        out.write_text('\n'.join(f'{k} = {v}' for k, v in kwargs.items()))
+        subprocess.run(['ruff', 'format', '--config', 'line-length=200', str(out)])
