@@ -649,8 +649,15 @@ class TestPush:
         path = subdirectory / 'path.test'
         contents = 'hello world'
         # container
+        assert not path.exists()
+        assert not subdirectory.exists()
+        assert not directory.exists()
         file_ops.FileOps(container).push(path=path, source=contents, make_dirs=True)
         assert path.read_text() == contents
+        info_pat_c = _path_to_fileinfo(path)
+        info_sub_c = _path_to_fileinfo(subdirectory)
+        info_dir_c = _path_to_fileinfo(directory)
+        # cleanup
         path.unlink()
         subdirectory.rmdir()
         directory.rmdir()
@@ -660,6 +667,21 @@ class TestPush:
         assert not directory.exists()
         file_ops.FileOps().push(path=path, source=contents, make_dirs=True)
         assert path.read_text() == contents
+        info_pat = _path_to_fileinfo(path)
+        info_sub = _path_to_fileinfo(subdirectory)
+        info_dir = _path_to_fileinfo(directory)
+        write_for_debugging(
+            'push_subdirectory_make_dirs',
+            info_pat_c=info_pat_c,
+            info_pat=info_pat,
+            info_sub_c=info_sub_c,
+            info_sub=info_sub,
+            info_dir_c=info_dir_c,
+            info_dir=info_dir,
+        )
+        assert_fileinfo_eq(info_pat, info_pat_c)
+        assert_fileinfo_eq(info_sub, info_sub_c)
+        assert_fileinfo_eq(info_dir, info_dir_c)
 
     @staticmethod
     def test_subdirectory_no_make_dirs(container: ops.Container, tmp_path: pathlib.Path):

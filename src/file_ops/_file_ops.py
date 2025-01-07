@@ -295,7 +295,15 @@ class FileOps:
             dirmode = permissions if permissions is not None else 0o755  # Pebble default  for make_dir
             dirmode |= 0o100  # we need at least execute permissions for the user to actually push the file
             # TODO: check the permissions on the directories pebble creates and ensure we match
-            ppath.parent.mkdir(parents=True, exist_ok=True, mode=dirmode)
+            _make_dir(
+                ppath.parent,
+                user=user,
+                user_id=user_id,
+                group=group,
+                group_id=group_id,
+                make_parents=True,
+                mode=dirmode,
+            )
 
         with _Chown(
             path=ppath,
@@ -307,7 +315,7 @@ class FileOps:
             on_error=lambda: None,  # TODO: delete file on error? what about created directories? check pebble behaviour
         ):
             try:
-                ppath.touch(mode=0o600)
+                ppath.touch(mode=0o600)  # rw permissions to allow us to write the file
             except FileNotFoundError:
                 raise FileNotFoundPathError._from_path(path, method='open')
             _write_chunked(path=ppath, source_io=source_io, chunk_size=self._chunk_size, encoding=encoding)
