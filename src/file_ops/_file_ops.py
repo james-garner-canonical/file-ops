@@ -141,7 +141,14 @@ class FileOps:
                     if error._matches(e):
                         raise error._from_error(e, path=path)
                 raise
+            except ops.pebble.PathError as e:
+                for error in (RelativePathError,):
+                    if error._matches(e):
+                        raise error._from_error(e, path=path)
+                raise
         ppath = Path(path)
+        if not ppath.is_absolute():
+            raise RelativePathError._from_path(path)
         if not ppath.exists():
             raise FileNotFoundAPIError._from_path(path)
         if itself or not ppath.is_dir():
@@ -150,6 +157,7 @@ class FileOps:
             paths = list(ppath.iterdir())
         if paths and pattern is not None:
             # validate pattern, but only if there are paths
+            # TODO: look at how pebble validates the pattern and ensure we match
             try:
                 re.compile(pattern.replace('*', '.*').replace('?', '.?'))
                 # catch mismatched brackets etc
@@ -244,7 +252,9 @@ class FileOps:
         ppath = Path(path)
         if not ppath.is_absolute():
             raise RelativePathError._from_path(path=ppath)
-        raise NotImplementedError()
+        if not ppath.exists():
+            raise FileNotFoundPathError._from_path(path=ppath, method='remove')
+        _try_remove(ppath, recursive=recursive)
 
     def push(
         self,
@@ -273,6 +283,7 @@ class FileOps:
                     group=group,
                 )
             except ops.pebble.PathError as e:
+                # TODO: we'll need to cover at least all the same cases as make_dir I think
                 for error in (RelativePathError,):
                     if error._matches(e):
                         raise error._from_error(e, path=path)
@@ -344,9 +355,9 @@ class FileOps:
                 newline='' if encoding is not None else None,
             )
         except PermissionError as e:
-            raise PermissionPathError._from_exception(e, path=ppath, method='pull')
+            raise PermissionPathError._from_exception(e, path=ppath, method='open')
         except FileNotFoundError as e:
-            raise FileNotFoundPathError._from_path(path=ppath, method='pull')
+            raise FileNotFoundPathError._from_path(path=ppath, method='stat')
         return cast('Union[TextIO, BinaryIO]', f)
 
 
@@ -365,20 +376,20 @@ class _Chown(AbstractContextManager['_Chown', None]):
             user_arg = _get_user_arg(str_name=user, int_id=user_id)
             group_arg = _get_group_arg(str_name=group, int_id=group_id)
         except KeyError as e:
-            raise LookupPathError._from_exception(e, path=path, method='mkdir')
+            raise LookupPathError._from_exception(e, path=path, method=method)
         except ValueError as e:
-            raise ValuePathError._from_path(path=path, method='mkdir', message=str(e))
+            raise ValuePathError._from_path(path=path, method=method, message=str(e))
         if user_arg is None and group_arg is not None:
             raise ValuePathError._from_path(
                 path=path,
-                method='mkdir',
+                method=method,
                 message='cannot look up user and group: must specify user, not just group',
             )
         if isinstance(user_arg, int) and group_arg is None:
             # TODO: patch pebble so that this isn't an error case
             raise ValuePathError._from_path(
                 path=path,
-                method='mkdir',
+                method=method,
                 message='cannot look up user and group: must specify group, not just UID',
             )
         self.path = path
@@ -492,6 +503,20 @@ _FT_MAP: dict[int, ops.pebble.FileType] = {
     stat.S_IFBLK: ops.pebble.FileType.DEVICE,  # block device
     stat.S_IFCHR: ops.pebble.FileType.DEVICE,  # character device
 }
+
+
+def _try_remove(path: Path, recursive: bool) -> None:
+    if not path.is_dir():
+        path.unlink()
+        return
+    try:
+        path.rmdir()
+    except OSError as e:
+        assert e.errno == 39  # Directory not empty
+        if not recursive:
+            raise  # TODO: OSPathError? DirectoryNotEmptyError?
+        for p in path.iterdir():
+            _try_remove(p, recursive=True)
 
 
 # type checking

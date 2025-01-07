@@ -517,10 +517,10 @@ class TestRemovePath:
         print(exception_context.value)
         assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
         # without container
-        with pytest.raises(NotImplementedError) as exception_context:
+        with pytest.raises(FileNotFoundError) as exception_context:
             file_ops.FileOps().remove_path(file)
         print(exception_context.value)
-        #assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
+        assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
 
     @staticmethod
     def test_path_not_absolute(container: ops.Container):
