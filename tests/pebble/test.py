@@ -96,6 +96,7 @@ class TestListFiles:
             '*.txt',
             '**.txt',
             '***.txt',
+            '*',
             # matching the file socket.socket
             '*.socket',
             'socket.*',
@@ -150,14 +151,6 @@ class TestListFiles:
         with pytest.raises(ops.pebble.APIError) as exception_context:
             file_ops.FileOps(container).list_files(interesting_dir, pattern=pattern)
         assert isinstance(exception_context.value, file_ops.ValueAPIError)
-        # debugging start
-        out = pathlib.Path('.tmp') / 'list_files_bad_pattern.py'
-        out.parent.mkdir(exist_ok=True)
-        with_container = exception_context.value
-        without_container = None
-        out.write_text(f'{with_container=}\n{without_container=}')
-        subprocess.run(['ruff', 'format', '--config', 'line-length=200', str(out)])
-        # debugging end
         with pytest.raises(ValueError) as exception_context:
             file_ops.FileOps().list_files(interesting_dir, pattern=pattern)
         assert isinstance(exception_context.value, file_ops.ValueAPIError)
@@ -173,26 +166,67 @@ class TestListFiles:
             assert with_container == without_container
 
     @staticmethod
-    def test_itself_ok(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test')
-        with_container = file_ops.FileOps(container).list_files(directory, itself=True)
-        without_container = file_ops.FileOps().list_files(directory, itself=True)
+    def test_itself_ok(container: ops.Container, interesting_dir: pathlib.Path):
+        with_container = file_ops.FileOps(container).list_files(interesting_dir, itself=True)
+        without_container = file_ops.FileOps().list_files(interesting_dir, itself=True)
         with_container.sort(key=lambda fileinfo: fileinfo.name)
         without_container.sort(key=lambda fileinfo: fileinfo.name)
         with unittest.mock.patch.object(ops.pebble.FileInfo, '__eq__', fileinfo_eq):
             assert with_container == without_container
 
     @staticmethod
-    def test_target_doesnt_exist(container: ops.Container):
-        file = '/does/not/exist/'
+    def test_itself_pattern_ok(container: ops.Container, interesting_dir: pathlib.Path):
+        pattern = '*'
+        with_container = file_ops.FileOps(container).list_files(interesting_dir, pattern=pattern)
+        without_container = file_ops.FileOps().list_files(interesting_dir, pattern=pattern)
+        with_container.sort(key=lambda fileinfo: fileinfo.name)
+        without_container.sort(key=lambda fileinfo: fileinfo.name)
+        # debugging start
+        out = pathlib.Path('.tmp') / 'list_files_itself_pattern_ok.py'
+        out.parent.mkdir(exist_ok=True)
+        out.write_text(f'{with_container=}\n{without_container=}')
+        subprocess.run(['ruff', 'format', '--config', 'line-length=200', str(out)])
+        # debugging end
+        with unittest.mock.patch.object(ops.pebble.FileInfo, '__eq__', fileinfo_eq):
+            assert with_container == without_container
+
+    @staticmethod
+    def test_itself_pattern_no_matches(container: ops.Container, interesting_dir: pathlib.Path):
+        pattern = '*.nomatches'
+        with_container = file_ops.FileOps(container).list_files(interesting_dir, pattern=pattern)
+        without_container = file_ops.FileOps().list_files(interesting_dir, pattern=pattern)
+        with_container.sort(key=lambda fileinfo: fileinfo.name)
+        without_container.sort(key=lambda fileinfo: fileinfo.name)
+        # debugging start
+        out = pathlib.Path('.tmp') / 'list_files_itself_pattern_no_matches.py'
+        out.parent.mkdir(exist_ok=True)
+        out.write_text(f'{with_container=}\n{without_container=}')
+        subprocess.run(['ruff', 'format', '--config', 'line-length=200', str(out)])
+        # debugging end
+        with unittest.mock.patch.object(ops.pebble.FileInfo, '__eq__', fileinfo_eq):
+            assert with_container == without_container
+
+    @staticmethod
+    def test_itself_bad_pattern(container: ops.Container, interesting_dir: pathlib.Path):
+        pattern = '[foo'
+        with pytest.raises(ops.pebble.APIError) as exception_context:
+            file_ops.FileOps(container).list_files(interesting_dir, pattern=pattern, itself=True)
+        assert isinstance(exception_context.value, file_ops.ValueAPIError)
+        with pytest.raises(ValueError) as exception_context:
+            file_ops.FileOps().list_files(interesting_dir, pattern=pattern, itself=True)
+        assert isinstance(exception_context.value, file_ops.ValueAPIError)
+
+    @staticmethod
+    def test_target_doesnt_exist(container: ops.Container, tmp_path: pathlib.Path):
+        path = (tmp_path / '/does/not/exist/')
         # with container
         with pytest.raises(ops.pebble.APIError) as exception_context:
-            file_ops.FileOps(container).list_files(file)
+            file_ops.FileOps(container).list_files(path)
         print(exception_context.value)
         assert isinstance(exception_context.value, file_ops.FileNotFoundAPIError)
         # without container
         with pytest.raises(FileNotFoundError) as exception_context:
-            file_ops.FileOps().list_files(file)
+            file_ops.FileOps().list_files(path)
         print(exception_context.value)
         assert isinstance(exception_context.value, file_ops.FileNotFoundAPIError)
 
@@ -203,10 +237,8 @@ class TestListFiles:
 )
 class TestMakeDir:
     @staticmethod
-    def test_ok(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
-        if directory.exists():
-            directory.rmdir()
+    def test_ok(container: ops.Container, tmp_path: pathlib.Path):
+        directory = tmp_path / 'directory'
         file_ops.FileOps(container).make_dir(directory)
         assert directory.exists()
         directory.rmdir()
@@ -215,8 +247,8 @@ class TestMakeDir:
         directory.rmdir()
 
     @staticmethod
-    def test_directory_already_exists(container: ops.Container):
-        directory = '/tmp/pebble-test/tmpdir'
+    def test_directory_already_exists(container: ops.Container, tmp_path: pathlib.Path):
+        directory = tmp_path / 'directory'
         pathlib.Path(directory).mkdir(exist_ok=True, parents=True)
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
@@ -230,11 +262,9 @@ class TestMakeDir:
         assert isinstance(exception_context.value, file_ops.FileExistsPathError)
 
     @staticmethod
-    def test_subdirectory_make_parents(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
+    def test_subdirectory_make_parents(container: ops.Container, tmp_path: pathlib.Path):
+        directory = tmp_path / 'directory'
         subdirectory = directory / 'subdirectory'
-        if directory.exists():
-            directory.rmdir()
         # container
         file_ops.FileOps(container).make_dir(subdirectory, make_parents=True)
         assert subdirectory.exists()
@@ -246,11 +276,9 @@ class TestMakeDir:
         shutil.rmtree(directory)
 
     @staticmethod
-    def test_subdirectory_no_make_parents(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
+    def test_subdirectory_no_make_parents(container: ops.Container, tmp_path: pathlib.Path):
+        directory = tmp_path / 'directory'
         subdirectory = directory / 'subdirectory'
-        if directory.exists():
-            directory.rmdir()
         # container
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOps(container).make_dir(subdirectory)
@@ -267,22 +295,20 @@ class TestMakeDir:
         assert not directory.exists()
 
     @staticmethod
-    def test_subdirectory_already_exists_make_parents(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
+    def test_subdirectory_already_exists_make_parents(container: ops.Container, tmp_path: pathlib.Path):
+        directory = tmp_path / 'directory'
         subdirectory = directory / 'subdirectory'
-        subdirectory.mkdir(exist_ok=True, parents=True)
+        subdirectory.mkdir(parents=True)
         # with container
         file_ops.FileOps(container).make_dir(subdirectory, make_parents=True)
         # without container
         file_ops.FileOps().make_dir(subdirectory, make_parents=True)
-        # cleanup
-        shutil.rmtree(directory)
 
     @staticmethod
-    def test_subdirectory_already_exists_no_make_parents(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
+    def test_subdirectory_already_exists_no_make_parents(container: ops.Container, tmp_path: pathlib.Path):
+        directory = tmp_path / 'directory'
         subdirectory = directory / 'subdirectory'
-        subdirectory.mkdir(exist_ok=True, parents=True)
+        subdirectory.mkdir(parents=True)
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOps(container).make_dir(subdirectory)
@@ -293,7 +319,6 @@ class TestMakeDir:
             file_ops.FileOps().make_dir(subdirectory)
         print(exception_context.value)
         assert isinstance(exception_context.value, file_ops.FileExistsPathError)
-        shutil.rmtree(directory)
 
     @staticmethod
     def test_path_not_absolute(container: ops.Container):
@@ -305,13 +330,11 @@ class TestMakeDir:
             file_ops.FileOps().make_dir(path)
 
     @staticmethod
-    def test_chown_root_without_privileges(container: ops.Container):
+    def test_chown_root_without_privileges(container: ops.Container, tmp_path: pathlib.Path):
         # TODO: what if we do have root privileges, like in ci?
         user_id = 0
         user_name = 'root'
-        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
-        if directory.exists():
-            directory.rmdir()
+        directory = tmp_path / 'directory'
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOps(container).make_dir(directory, user=user_name, user_id=user_id)
@@ -326,10 +349,8 @@ class TestMakeDir:
         assert not pathlib.Path(directory).exists()
 
     @staticmethod
-    def test_chown_when_user_doesnt_exist(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
-        if directory.exists():
-            directory.rmdir()
+    def test_chown_when_user_doesnt_exist(container: ops.Container, tmp_path: pathlib.Path):
+        directory = tmp_path / 'directory'
         # TODO: user that doesn't exist
         user_name = 'fake_user'
         # with container
@@ -346,10 +367,8 @@ class TestMakeDir:
         assert not pathlib.Path(directory).exists()
 
     @staticmethod
-    def test_chown_when_user_id_and_group_id_dont_exist(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
-        if directory.exists():
-            directory.rmdir()
+    def test_chown_when_user_id_and_group_id_dont_exist(container: ops.Container, tmp_path: pathlib.Path):
+        directory = tmp_path / 'directory'
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOps(container).make_dir(directory, user_id=9000, group_id=9001)
@@ -364,10 +383,8 @@ class TestMakeDir:
         assert not pathlib.Path(directory).exists()
 
     @staticmethod
-    def test_just_user(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
-        if directory.exists():
-            directory.rmdir()
+    def test_just_user(container: ops.Container, tmp_path: pathlib.Path):
+        directory = tmp_path / 'directory'
         # TODO: user that exists
         user_name = 'user'
         # with container
@@ -380,10 +397,8 @@ class TestMakeDir:
         directory.rmdir()
 
     @staticmethod
-    def test_just_user_id(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
-        if directory.exists():
-            directory.rmdir()
+    def test_just_user_id(container: ops.Container, tmp_path: pathlib.Path):
+        directory = tmp_path / 'directory'
         # TODO: user that exists
         user_id = 1000
         # with container
@@ -398,10 +413,8 @@ class TestMakeDir:
         assert isinstance(exception_context.value, file_ops.ValuePathError)
 
     @staticmethod
-    def test_just_group_name(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
-        if directory.exists():
-            directory.rmdir()
+    def test_just_group_name(container: ops.Container, tmp_path: pathlib.Path):
+        directory = tmp_path / 'directory'
         # TODO: user that exists
         group = 'user'
         # with container
@@ -416,10 +429,8 @@ class TestMakeDir:
         assert isinstance(exception_context.value, file_ops.ValuePathError)
 
     @staticmethod
-    def test_just_group_id(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
-        if directory.exists():
-            directory.rmdir()
+    def test_just_group_id(container: ops.Container, tmp_path: pathlib.Path):
+        directory = tmp_path / 'directory'
         # TODO: user that exists
         group_id = 1000
         # with container
@@ -434,10 +445,8 @@ class TestMakeDir:
         assert isinstance(exception_context.value, file_ops.ValuePathError)
 
     @staticmethod
-    def test_just_group_args(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
-        if directory.exists():
-            directory.rmdir()
+    def test_just_group_args(container: ops.Container, tmp_path: pathlib.Path):
+        directory = tmp_path / 'directory'
         # TODO: user that exists
         group = 'user'
         group_id = 1000
@@ -453,10 +462,8 @@ class TestMakeDir:
         assert isinstance(exception_context.value, file_ops.ValuePathError)
 
     @staticmethod
-    def test_chown_when_user_and_user_id_both_exist_but_dont_match(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test/tmpdir')
-        if directory.exists():
-            directory.rmdir()
+    def test_chown_when_user_and_user_id_both_exist_but_dont_match(container: ops.Container, tmp_path: pathlib.Path):
+        directory = tmp_path / 'directory'
         # TODO: find a user and user id combo or way to get it dynamically that
         # will exist at runtime but won't match
         user_id = 0
@@ -475,7 +482,7 @@ class TestMakeDir:
         assert not pathlib.Path(directory).exists()
 
     @staticmethod
-    def test_chown_when_user_and_user_id_both_provided_but_at_least_one_doesnt_exist(container: ops.Container):
+    def test_chown_when_user_and_user_id_both_provided_but_at_least_one_doesnt_exist(container: ops.Container, tmp_path: pathlib.Path):
         # TODO: better way to make user and user_id
         user_id = 9000
         user_name = 'user-that-doesnt-exist-hopefully'
@@ -502,8 +509,8 @@ class TestMakeDir:
 )
 class TestRemovePath:
     @staticmethod
-    def test_target_doesnt_exist(container: ops.Container):
-        file = '/does/not/exist'
+    def test_target_doesnt_exist(container: ops.Container, tmp_path: pathlib.Path):
+        file = tmp_path / 'does/not/exist'
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOps(container).remove_path(file)
@@ -532,55 +539,68 @@ class TestRemovePath:
 )
 class TestPush:
     @staticmethod
-    def test_str_ok(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test')
-        path = directory / 'path.test'
-        assert not path.exists()
+    def test_str_ok(container: ops.Container, tmp_path: pathlib.Path):
+        path = tmp_path / 'path.test'
         contents = 'hello world'
         # container
+        assert not path.exists()
         file_ops.FileOps(container).push(path=path, source=contents)
         assert path.read_text() == contents
         path.unlink()
         # no container
+        assert not path.exists()
         file_ops.FileOps().push(path=path, source=contents)
         assert path.read_text() == contents
-        path.unlink()
 
     @staticmethod
-    def test_bytes_ok(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test')
-        path = directory / 'path.test'
-        assert not path.exists()
+    def test_bytes_ok(container: ops.Container, tmp_path: pathlib.Path):
+        path = tmp_path / 'path.test'
         contents = b'hello world'
         # container
+        assert not path.exists()
         file_ops.FileOps(container).push(path=path, source=contents)
         assert path.read_bytes() == contents
         path.unlink()
         # no container
+        assert not path.exists()
         file_ops.FileOps().push(path=path, source=contents)
         assert path.read_bytes() == contents
-        path.unlink()
 
     @staticmethod
-    def test_file_ok(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test')
-        path = directory / 'path.test'
+    def test_text_file_ok(container: ops.Container, tmp_path: pathlib.Path):
+        path = tmp_path / 'path.test'
+        contents = 'hello world'
+        source = tmp_path / 'source.test'
+        source.write_text(contents)
+        # container
         assert not path.exists()
-        contents = b'hello world'
-        source = directory / 'source.test'
+        with source.open() as f:
+            file_ops.FileOps(container).push(path=path, source=f)
+        assert path.read_text() == contents
+        path.unlink()
+        # no container
+        assert not path.exists()
+        with source.open() as f:
+            file_ops.FileOps().push(path=path, source=f)
+        assert path.read_text() == contents
+
+    @staticmethod
+    def test_binary_file_ok(container: ops.Container, tmp_path: pathlib.Path):
+        path = tmp_path / 'path.test'
+        contents = bytearray(range(256))
+        source = tmp_path / 'source.test'
         source.write_bytes(contents)
         # container
-        with source.open() as f:
+        assert not path.exists()
+        with source.open('rb') as f:
             file_ops.FileOps(container).push(path=path, source=f)
         assert path.read_bytes() == contents
         path.unlink()
         # no container
-        with source.open() as f:
+        assert not path.exists()
+        with source.open('rb') as f:
             file_ops.FileOps().push(path=path, source=f)
         assert path.read_bytes() == contents
-        path.unlink()
-        # cleanup
-        source.unlink()
 
     @staticmethod
     def test_path_not_absolute(container: ops.Container):
@@ -599,9 +619,8 @@ class TestPush:
 )
 class TestPull:
     @staticmethod
-    def test_str_ok(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test')
-        path = directory / 'path.test'
+    def test_str_ok(container: ops.Container, tmp_path: pathlib.Path):
+        path = tmp_path / 'path.test'
         contents = 'hello world'
         path.write_text(contents)
         # container
@@ -610,13 +629,10 @@ class TestPull:
         # no container
         f = file_ops.FileOps().pull(path)
         assert f.read() == contents
-        # cleanup
-        path.unlink()
 
     @staticmethod
-    def test_bytes_ok(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test')
-        path = directory / 'path.test'
+    def test_bytes_ok(container: ops.Container, tmp_path: pathlib.Path):
+        path = tmp_path / 'path.test'
         contents = b'hello world'
         path.write_bytes(contents)
         # container
@@ -625,13 +641,10 @@ class TestPull:
         # no container
         f = file_ops.FileOps().pull(path, encoding=None)
         assert f.read() == contents
-        # cleanup
-        path.unlink()
 
     @staticmethod
-    def test_str_bad_encoding_argument(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test')
-        path = directory / 'path.test'
+    def test_str_bad_encoding_argument(container: ops.Container, tmp_path: pathlib.Path):
+        path = tmp_path / 'path.test'
         contents = 'hello world'
         path.write_text(contents)
         # container
@@ -640,13 +653,10 @@ class TestPull:
         # no container
         with pytest.raises(LookupError):
             file_ops.FileOps().pull(path, encoding='bad')
-        # cleanup
-        path.unlink()
 
     @staticmethod
-    def test_str_encoding_doesnt_match(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test')
-        path = directory / 'path.test'
+    def test_str_encoding_doesnt_match(container: ops.Container, tmp_path: pathlib.Path):
+        path = tmp_path / 'path.test'
         contents = bytes(range(256))
         path.write_bytes(contents)
         # container
@@ -657,14 +667,10 @@ class TestPull:
         f = file_ops.FileOps().pull(path, encoding='utf-8')
         with pytest.raises(UnicodeDecodeError):
             f.read()
-        # cleanup
-        path.unlink()
 
     @staticmethod
-    def test_target_doesnt_exist(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test')
-        path = directory / 'path.test'
-        assert not path.exists()
+    def test_target_doesnt_exist(container: ops.Container, tmp_path: pathlib.Path):
+        path = tmp_path / 'path.test'
         # container
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOps(container).pull(path)
@@ -677,9 +683,8 @@ class TestPull:
         assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
 
     @staticmethod
-    def test_no_permission(container: ops.Container):
-        directory = pathlib.Path('/tmp/pebble-test')
-        path = directory / 'path.test'
+    def test_no_permission(container: ops.Container, tmp_path: pathlib.Path):
+        path = tmp_path / 'path.test'
         path.write_text('')
         os.chmod(path, 0)
         # container
@@ -692,8 +697,6 @@ class TestPull:
             file_ops.FileOps().pull(path)
         print(exception_context.value)
         assert isinstance(exception_context.value, file_ops.PermissionPathError)
-        # cleanup
-        path.unlink()
 
     @staticmethod
     def test_path_not_absolute(container: ops.Container):
