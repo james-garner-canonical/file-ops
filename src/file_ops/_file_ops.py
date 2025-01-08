@@ -292,9 +292,6 @@ class FileOps:
             source_io = source
 
         if make_dirs:
-            dirmode = permissions if permissions is not None else 0o755  # Pebble default  for make_dir
-            dirmode |= 0o100  # we need at least execute permissions for the user to actually push the file
-            # TODO: check the permissions on the directories pebble creates and ensure we match
             _make_dir(
                 ppath.parent,
                 user=user,
@@ -302,7 +299,7 @@ class FileOps:
                 group=group,
                 group_id=group_id,
                 make_parents=True,
-                mode=dirmode,
+                mode=0o755,  # following pebble
             )
 
         with _Chown(

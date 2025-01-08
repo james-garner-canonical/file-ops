@@ -643,7 +643,22 @@ class TestPush:
             file_ops.FileOps().push(path, source='')
 
     @staticmethod
-    def test_subdirectory_make_dirs(container: ops.Container, tmp_path: pathlib.Path):
+    @pytest.mark.parametrize(
+        'mode',
+        [  # strings for nicer pytest output
+            '777',
+            '755',  # pebble default for file push
+            '700',
+            '666',
+            '644',  # pebble default for mkdir
+            '600',
+            '010',
+            '007',
+            '000',
+        ]
+    )
+    def test_subdirectory_make_dirs(container: ops.Container, tmp_path: pathlib.Path, mode: str):
+        permissions = int(f'0o{mode}', base=8)
         directory = tmp_path / 'directory'
         subdirectory = directory / 'subdirectory'
         path = subdirectory / 'path.test'
@@ -652,11 +667,15 @@ class TestPush:
         assert not path.exists()
         assert not subdirectory.exists()
         assert not directory.exists()
-        file_ops.FileOps(container).push(path=path, source=contents, make_dirs=True)
-        assert path.read_text() == contents
+        file_ops.FileOps(container).push(path=path, source=contents, make_dirs=True, permissions=permissions)
+        assert directory.exists()
+        assert subdirectory.exists()
+        assert path.exists()
         info_pat_c = _path_to_fileinfo(path)
         info_sub_c = _path_to_fileinfo(subdirectory)
         info_dir_c = _path_to_fileinfo(directory)
+        os.chmod(path, 0o400)
+        assert path.read_text() == contents
         # cleanup
         path.unlink()
         subdirectory.rmdir()
@@ -665,13 +684,17 @@ class TestPush:
         assert not path.exists()
         assert not subdirectory.exists()
         assert not directory.exists()
-        file_ops.FileOps().push(path=path, source=contents, make_dirs=True)
-        assert path.read_text() == contents
+        file_ops.FileOps().push(path=path, source=contents, make_dirs=True, permissions=permissions)
+        assert directory.exists()
+        assert subdirectory.exists()
+        assert path.exists()
         info_pat = _path_to_fileinfo(path)
         info_sub = _path_to_fileinfo(subdirectory)
         info_dir = _path_to_fileinfo(directory)
+        os.chmod(path, 0o400)
+        assert path.read_text() == contents
         write_for_debugging(
-            'push_subdirectory_make_dirs',
+            f'push_subdirectory_make_dirs_{mode}',
             info_pat_c=info_pat_c,
             info_pat=info_pat,
             info_sub_c=info_sub_c,
