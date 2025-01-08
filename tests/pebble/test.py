@@ -544,6 +544,37 @@ class TestMakeDir:
         file_ops.FileOps().make_dir(subdirectory, make_parents=True)
 
     @staticmethod
+    @pytest.mark.parametrize('mode', GOOD_PARENT_DIRECTORY_MODES)
+    def test_subdirectory_already_exists_make_parents_permissions(container: ops.Container, tmp_path: pathlib.Path, mode: str | None):
+        permissions = int(f'0o{mode}', base=8) if mode is not None else mode
+        directory = tmp_path / 'directory'
+        subdirectory = directory / 'subdirectory'
+        subdirectory.mkdir(parents=True)
+        # with container
+        file_ops.FileOps(container).make_dir(subdirectory, make_parents=True, permissions=permissions)
+        info_dir_c = _path_to_fileinfo(directory)
+        os.chmod(directory, 0o755)
+        info_subdir_c = _path_to_fileinfo(subdirectory)
+        # without container
+        file_ops.FileOps().make_dir(subdirectory, make_parents=True, permissions=permissions)
+        info_dir = _path_to_fileinfo(directory)
+        os.chmod(directory, 0o755)
+        info_subdir = _path_to_fileinfo(subdirectory)
+        # cleanup
+        rmdir(subdirectory)
+        rmdir(directory)
+        # comparison
+        write_for_debugging(
+            f'make_dir_subdirectory_already_exists_make_parents_permissions_{mode}',
+            info_dir_c=info_dir_c,
+            info_dir=info_dir,
+            info_subdir_c=info_subdir_c,
+            info_subdir=info_subdir,
+        )
+        assert_fileinfo_eq(info_dir, info_dir_c)
+        assert_fileinfo_eq(info_subdir, info_subdir_c)
+
+    @staticmethod
     def test_subdirectory_already_exists_no_make_parents(container: ops.Container, tmp_path: pathlib.Path):
         directory = tmp_path / 'directory'
         subdirectory = directory / 'subdirectory'
