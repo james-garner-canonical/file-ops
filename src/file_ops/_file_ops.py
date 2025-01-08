@@ -11,9 +11,9 @@ import pwd
 import re
 import shutil
 import stat
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path, PurePath
-from typing import TYPE_CHECKING, Protocol, cast, overload
+from typing import TYPE_CHECKING, Iterator, Protocol, cast, overload
 
 import ops
 
@@ -205,15 +205,18 @@ class FileOps:
         directory = Path(path)
         if not directory.is_absolute():
             raise RelativePathError._from_path(path=directory)
-        _make_dir(
-            path=directory,
-            user=user,
-            user_id=user_id,
-            group=group,
-            group_id=group_id,
-            make_parents=make_parents,
-            mode=permissions if permissions is not None else 0o755,  # Pebble default
-        )
+        try:
+            _make_dir(
+                path=directory,
+                user=user,
+                user_id=user_id,
+                group=group,
+                group_id=group_id,
+                make_parents=make_parents,
+                mode=permissions if permissions is not None else 0o755,
+            )
+        except PermissionError as e:
+            raise PermissionPathError._from_exception(e, path=path, method='mkdir')
 
     def push_path(
         self,
@@ -508,7 +511,7 @@ def _make_dir(
     mode: int,
 ):
     """As pathlib.Path.mkdir, but handles chown and propagates mode to parents."""
-    with _Chown(
+    chown_context = _Chown(
         path=path,
         user=user,
         user_id=user_id,
@@ -516,7 +519,8 @@ def _make_dir(
         group_id=group_id,
         method='mkdir',
         on_error=path.rmdir,
-    ):
+    )
+    with chown_context, _clear_umask():
         try:
             os.mkdir(path, mode)
         except FileNotFoundError:
@@ -532,9 +536,24 @@ def _make_dir(
                 mode=mode,
             )
             os.mkdir(path, mode)
-        except FileExistsError:
+            # PermissionError if we can't read the parent directory, following pebble
+            if not os.access(path.parent, os.R_OK):
+                raise PermissionError(f'cannot read: {path.parent} (created via make_parents)')
+        except OSError:
+            # FileExistsError -- following pathlib.Path.mkdir:
+            # Cannot rely on checking for EEXIST, since the operating system
+            # could give priority to other errors like EACCES or EROFS
             if not make_parents:
                 raise FileExistsPathError._from_path(path=path, method='mkdir')
+
+
+@contextmanager
+def _clear_umask() -> Iterator[None]:
+    original_mask = os.umask(0)
+    try:
+        yield None
+    finally:
+        os.umask(original_mask)
 
 
 def _try_remove(path: Path, recursive: bool) -> None:
