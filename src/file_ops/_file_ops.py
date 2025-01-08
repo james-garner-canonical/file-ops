@@ -305,7 +305,7 @@ class FileOps:
                 mode=0o755,  # following pebble
             )
 
-        with _Chown(
+        with _ChownContext(
             path=ppath,
             user=user,
             user_id=user_id,
@@ -357,7 +357,11 @@ class FileOps:
         return cast('Union[TextIO, BinaryIO]', f)
 
 
-class _Chown(AbstractContextManager['_Chown', None]):
+class _ChownContext(AbstractContextManager['_ChownContext', None]):
+    """Perform some user/group validation on init, and the rest+chown on exit.
+
+    Matches pebble's order of operations so that the outcomes and errors are the same.
+    """
     def __init__(
         self,
         path: Path,
@@ -369,8 +373,8 @@ class _Chown(AbstractContextManager['_Chown', None]):
         on_error: Callable[[], None],
     ):
         try:
-            user_arg = _get_user_arg(str_name=user, int_id=user_id)
-            group_arg = _get_group_arg(str_name=group, int_id=group_id)
+            user_arg = self._get_user_arg(str_name=user, int_id=user_id)
+            group_arg = self._get_group_arg(str_name=group, int_id=group_id)
         except KeyError as e:
             raise LookupPathError._from_exception(e, path=path, method=method)
         except ValueError as e:
@@ -403,7 +407,7 @@ class _Chown(AbstractContextManager['_Chown', None]):
         if exc_type is not None:
             return
         try:
-            _try_chown(self.path, user=self.user_arg, group=self.group_arg)
+            self._try_chown(self.path, user=self.user_arg, group=self.group_arg)
         except KeyError as e:
             self.on_error()
             raise LookupPathError._from_exception(e, path=self.path, method=self.method)
@@ -411,63 +415,63 @@ class _Chown(AbstractContextManager['_Chown', None]):
             self.on_error()
             raise PermissionPathError._from_exception(e, path=self.path, method=self.method)
 
-
-def _get_user_arg(str_name: str | None, int_id: int | None) -> str | int | None:
-    if str_name is not None:
+    @staticmethod
+    def _get_user_arg(str_name: str | None, int_id: int | None) -> str | int | None:
+        if str_name is not None:
+            if int_id is not None:
+                info = pwd.getpwnam(str_name)  # KeyError if user doesn't exist
+                info_id = info.pw_uid
+                if info_id != int_id:
+                    raise ValueError(
+                        'If both user_id and user name are provided, they must match'
+                        f' -- "{str_name}" has id {info_id} but {int_id} was provided.'
+                    )
+            return str_name
         if int_id is not None:
-            info = pwd.getpwnam(str_name)  # KeyError if user doesn't exist
-            info_id = info.pw_uid
-            if info_id != int_id:
-                raise ValueError(
-                    'If both user_id and user name are provided, they must match'
-                    f' -- "{str_name}" has id {info_id} but {int_id} was provided.'
-                )
-        return str_name
-    if int_id is not None:
-        return int_id
-    return None
+            return int_id
+        return None
 
-
-def _get_group_arg(str_name: str | None, int_id: int | None) -> str | int | None:
-    if str_name is not None:
+    @staticmethod
+    def _get_group_arg(str_name: str | None, int_id: int | None) -> str | int | None:
+        if str_name is not None:
+            if int_id is not None:
+                info = grp.getgrnam(str_name)  # KeyError if group doesn't exist
+                info_id = info.gr_gid
+                if info_id != int_id:
+                    raise ValueError(
+                        'If both group_id and group name are provided, they must match'
+                        f' -- "{str_name}" has id {info_id} but {int_id} was provided.'
+                    )
+            return str_name
         if int_id is not None:
-            info = grp.getgrnam(str_name)  # KeyError if group doesn't exist
-            info_id = info.gr_gid
-            if info_id != int_id:
-                raise ValueError(
-                    'If both group_id and group name are provided, they must match'
-                    f' -- "{str_name}" has id {info_id} but {int_id} was provided.'
-                )
-        return str_name
-    if int_id is not None:
-        return int_id
-    return None
+            return int_id
+        return None
 
-
-def _try_chown(path: Path | str, user: int | str | None, group: int | str | None) -> None:
-    # KeyError for user/group that doesn't exist, as pebble looks these up
-    if isinstance(user, str):
-        pwd.getpwnam(user)
-    if isinstance(group, str):
-        grp.getgrnam(group)
-    # PermissionError for user_id/group_id that doesn't exist, as pebble tries to use these
-    if isinstance(user, int):
-        try:
-            pwd.getpwuid(user)
-        except KeyError as e:
-            raise PermissionError(e)
-    if isinstance(group, int):
-        try:
-            grp.getgrgid(group)
-        except KeyError as e:
-            raise PermissionError(e)
-    # PermissionError for e.g. unprivileged user trying to chown as root
-    if user is not None and group is not None:
-        shutil.chown(path, user=user, group=group)
-    elif user is not None:
-        shutil.chown(path, user=user)
-    elif group is not None:
-        shutil.chown(path, group=group)
+    @staticmethod
+    def _try_chown(path: Path | str, user: int | str | None, group: int | str | None) -> None:
+        # KeyError for user/group that doesn't exist, as pebble looks these up
+        if isinstance(user, str):
+            pwd.getpwnam(user)
+        if isinstance(group, str):
+            grp.getgrnam(group)
+        # PermissionError for user_id/group_id that doesn't exist, as pebble tries to use these
+        if isinstance(user, int):
+            try:
+                pwd.getpwuid(user)
+            except KeyError as e:
+                raise PermissionError(e)
+        if isinstance(group, int):
+            try:
+                grp.getgrgid(group)
+            except KeyError as e:
+                raise PermissionError(e)
+        # PermissionError for e.g. unprivileged user trying to chown as root
+        if user is not None and group is not None:
+            shutil.chown(path, user=user, group=group)
+        elif user is not None:
+            shutil.chown(path, user=user)
+        elif group is not None:
+            shutil.chown(path, group=group)
 
 
 def _path_to_fileinfo(path: Path) -> ops.pebble.FileInfo:
@@ -511,7 +515,7 @@ def _make_dir(
     mode: int,
 ):
     """As pathlib.Path.mkdir, but handles chown and propagates mode to parents."""
-    chown_context = _Chown(
+    chown_context = _ChownContext(
         path=path,
         user=user,
         user_id=user_id,
