@@ -223,14 +223,48 @@ class FileOps:
         source_path: str | Path | Iterable[str | Path],
         dest_dir: str | PurePath,
     ) -> None:
-        raise NotImplementedError()
+        if self._container is not None:
+            self._container.push_path(source_path=source_path, dest_dir=dest_dir)
+        if hasattr(source_path, '__iter__') and not isinstance(source_path, str):
+            source_paths = cast(Iterable[Union[str, Path]], source_path)
+        else:
+            source_paths = cast(Iterable[Union[str, Path]], [source_path])
+        source_paths = [Path(p) for p in source_paths]
+        dest_dir = Path(dest_dir)
+        if not dest_dir.is_absolute():
+            raise RelativePathError._from_path(path=dest_dir)
+        errors: list[tuple[str, Exception]] = []
+        for path in source_paths:
+            try:
+                _copy(source=path, dest=dest_dir)
+            except (OSError, ops.pebble.Error) as e:
+                errors.append((str(path), e))
+        if errors:
+            raise ops.model.MultiPushPullError('failed to push one or more files', errors)
 
     def pull_path(
         self,
         source_path: str | PurePath | Iterable[str | PurePath],
         dest_dir: str | Path,
     ) -> None:
-        raise NotImplementedError()
+        if self._container is not None:
+            self._container.pull_path(source_path=source_path, dest_dir=dest_dir)
+        if hasattr(source_path, '__iter__') and not isinstance(source_path, str):
+            source_paths = cast(Iterable[Union[str, Path]], source_path)
+        else:
+            source_paths = cast(Iterable[Union[str, Path]], [source_path])
+        source_paths = [Path(p) for p in source_paths]
+        dest_dir = Path(dest_dir)
+        errors: list[tuple[str, Exception]] = []
+        for path in source_paths:
+            try:
+                if not path.is_absolute():
+                    raise RelativePathError._from_path(path=path)
+                _copy(source=path, dest=dest_dir)
+            except (OSError, ops.pebble.Error) as e:
+                errors.append((str(path), e))
+        if errors:
+            raise ops.model.MultiPushPullError('failed to pull one or more files', errors)
 
     def remove_path(self, path: str | PurePath, *, recursive: bool = False) -> None:
         if self._container is not None:
@@ -582,6 +616,14 @@ def _write_chunked(path: Path, source_io: BinaryIO | TextIO, chunk_size: int, en
                 content = content.encode(encoding)
             f.write(content)
             content = source_io.read(chunk_size)
+
+
+def _copy(source: Path, dest: Path):
+    assert dest.is_dir()
+    if source.is_dir():
+        shutil.copytree(src=source, dst=dest)
+    else:
+        shutil.copy2(src=source, dst=dest)
 
 
 # type checking
