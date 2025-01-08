@@ -223,6 +223,7 @@ class FileOps:
         source_path: str | Path | Iterable[str | Path],
         dest_dir: str | PurePath,
     ) -> None:
+        # TODO: tests and errors
         if self._container is not None:
             self._container.push_path(source_path=source_path, dest_dir=dest_dir)
         if hasattr(source_path, '__iter__') and not isinstance(source_path, str):
@@ -247,6 +248,7 @@ class FileOps:
         source_path: str | PurePath | Iterable[str | PurePath],
         dest_dir: str | Path,
     ) -> None:
+        # TODO: tests and errors
         if self._container is not None:
             self._container.pull_path(source_path=source_path, dest_dir=dest_dir)
         if hasattr(source_path, '__iter__') and not isinstance(source_path, str):
