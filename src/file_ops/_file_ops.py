@@ -20,7 +20,7 @@ import ops
 
 from ._exceptions import (
     APIError,
-    FileExistsPathError,
+    PathError,
     FileNotFoundPathError,
     LookupPathError,
     PermissionPathError,
@@ -184,7 +184,6 @@ class FileOperations:
                 )
             except ops.pebble.PathError as e:
                 for error in (
-                    FileExistsPathError,
                     FileNotFoundPathError,
                     LookupPathError,
                     PermissionPathError,
@@ -576,7 +575,7 @@ def _make_dir(
             # Cannot rely on checking for EEXIST, since the operating system
             # could give priority to other errors like EACCES or EROFS
             if not make_parents:
-                raise FileExistsPathError._from_path(path=path, method='mkdir')
+                raise PathError.FileExistsError.from_path(path=path, method='mkdir')
 
 
 @contextmanager

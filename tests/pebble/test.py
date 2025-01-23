@@ -7,6 +7,7 @@ import subprocess
 from typing import TYPE_CHECKING
 
 import file_ops
+import file_ops._exceptions as exceptions
 import ops
 import pytest
 from file_ops._file_ops import _path_to_fileinfo  # pyright: ignore[reportPrivateUsage]
@@ -189,9 +190,11 @@ class TestListFiles:
         with pytest.raises(ops.pebble.APIError) as exception_context:
             file_ops.FileOperations(container).list_files(interesting_dir, pattern=pattern)
         print(exception_context.value)
+        assert exceptions.APIError.ValueError.matches(exception_context.value)
         with pytest.raises(ops.pebble.APIError) as exception_context:
             file_ops.FileOperations().list_files(interesting_dir, pattern=pattern)
         print(exception_context.value)
+        assert exceptions.APIError.ValueError.matches(exception_context.value)
 
     @staticmethod
     def test_bad_pattern_empty_dir(container: ops.Container, tmp_path: pathlib.Path):
@@ -248,9 +251,11 @@ class TestListFiles:
         with pytest.raises(ops.pebble.APIError) as exception_context:
             file_ops.FileOperations(container).list_files(interesting_dir, pattern=pattern, itself=True)
         print(exception_context.value)
+        assert exceptions.APIError.ValueError.matches(exception_context.value)
         with pytest.raises(ops.pebble.APIError) as exception_context:
             file_ops.FileOperations().list_files(interesting_dir, pattern=pattern, itself=True)
         print(exception_context.value)
+        assert exceptions.APIError.ValueError.matches(exception_context.value)
 
     @staticmethod
     def test_target_doesnt_exist(container: ops.Container, tmp_path: pathlib.Path):
@@ -259,10 +264,12 @@ class TestListFiles:
         with pytest.raises(ops.pebble.APIError) as exception_context:
             file_ops.FileOperations(container).list_files(path)
         print(exception_context.value)
+        assert exceptions.APIError.FileNotFoundError.matches(exception_context.value)
         # without container
         with pytest.raises(ops.pebble.APIError) as exception_context:
             file_ops.FileOperations().list_files(path)
         print(exception_context.value)
+        assert exceptions.APIError.FileNotFoundError.matches(exception_context.value)
 
 
 @pytest.mark.skipif(
@@ -288,12 +295,12 @@ class TestMakeDir:
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations(container).make_dir(directory)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.FileExistsPathError)
+        assert exceptions.PathError.FileExistsError.matches(exception_context.value)
         # without container
-        with pytest.raises(FileExistsError) as exception_context:
+        with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations().make_dir(directory)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.FileExistsPathError)
+        assert exceptions.PathError.FileExistsError.matches(exception_context.value)
 
     @staticmethod
     @pytest.mark.parametrize('mode', ALL_MODES)
@@ -591,13 +598,13 @@ class TestMakeDir:
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations(container).make_dir(subdirectory)
+        assert exceptions.PathError.FileExistsError.matches(exception_context.value)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.FileExistsPathError)
         # without container
-        with pytest.raises(FileExistsError) as exception_context:
+        with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations().make_dir(subdirectory)
+        assert exceptions.PathError.FileExistsError.matches(exception_context.value)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.FileExistsPathError)
 
     @staticmethod
     def test_path_not_absolute(container: ops.Container):
