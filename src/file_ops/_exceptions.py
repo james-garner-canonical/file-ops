@@ -29,40 +29,18 @@ class APIError:
             }
             return pebble.APIError(body=body, code=code, status=status, message=message)
 
-
-class ValueAPIError(ops.pebble.APIError, builtins.ValueError):
-    def __init__(self, body: dict[str, object], code: int, status: str, message: str, file: str):
-        # both __init__ methods will call Exception.__init__ and set self.args
-        # we want to have the pebble.Error version since we're using its repr etc
-        builtins.ValueError.__init__(self, message, file)
-        ops.pebble.APIError.__init__(self, body=body, code=code, status=status, message=message)
-
-    @classmethod
-    def _from_error(cls, error: ops.pebble.APIError, path: PurePath | str) -> Self:
-        assert cls._matches(error), f'{cls.__name__} does not match {error!r} {error!s}'
-        return cls(
-            body=error.body,
-            code=error.code,
-            status=error.status,
-            message=error.message,
-            file=str(path),
-        )
-
-    @classmethod
-    def _from_path(cls, path: PurePath | str, message: str) -> Self:
-        code = 400
-        status = 'Bad Request'
-        body: dict[str, object] = {
-            'type': 'error',
-            'status-code': code,
-            'status': status,
-            'result': {'message': message, 'kind': 'generic-file-error'},
-        }
-        return cls(body=body, code=code, status=status, message=message, file=str(path))
-
-    @classmethod
-    def _matches(cls, error: ops.pebble.Error) -> bool:
-        return isinstance(error, ops.pebble.APIError) and error.code == 400
+    class ValueError:
+        @staticmethod
+        def from_path(path: PurePath | str, message: str) -> pebble.APIError:
+            code = 400
+            status = 'Bad Request'
+            body: dict[str, object] = {
+                'type': 'error',
+                'status-code': code,
+                'status': status,
+                'result': {'message': message, 'kind': 'generic-file-error'},
+            }
+            return pebble.APIError(body=body, code=code, status=status, message=message)
 
 
 class FileNotFoundPathError(ops.pebble.PathError, builtins.FileNotFoundError):

@@ -25,7 +25,6 @@ from ._exceptions import (
     LookupPathError,
     PermissionPathError,
     RelativePathError,
-    ValueAPIError,
     ValuePathError,
 )
 
@@ -134,11 +133,6 @@ class FileOperations:
         if self._container is not None:
             try:
                 return self._container.list_files(path, pattern=pattern, itself=itself)
-            except ops.pebble.APIError as e:
-                for error in (ValueAPIError,):
-                    if error._matches(e):
-                        raise error._from_error(e, path=path)
-                raise
             except ops.pebble.PathError as e:
                 for error in (RelativePathError,):
                     if error._matches(e):
@@ -160,7 +154,7 @@ class FileOperations:
                 re.compile(pattern.replace('*', '.*').replace('?', '.?'))
                 # catch mismatched brackets etc
             except re.error:
-                raise ValueAPIError._from_path(
+                raise APIError.ValueError.from_path(
                     path=path, message=f'syntax error in pattern "{pattern}"'
                 )
             paths = [p for p in paths if fnmatch.fnmatch(str(p.name), pattern)]
