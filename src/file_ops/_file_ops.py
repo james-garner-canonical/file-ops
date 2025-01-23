@@ -11,15 +11,16 @@ import pwd
 import re
 import shutil
 import stat
+import types
 from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path, PurePath
-from typing import TYPE_CHECKING, Iterator, Protocol, cast, overload
+from typing import BinaryIO, Callable, Iterable, Protocol, TextIO, Union, cast, overload
 
 import ops
 
 from ._exceptions import (
+    APIError,
     FileExistsPathError,
-    FileNotFoundAPIError,
     FileNotFoundPathError,
     LookupPathError,
     PermissionPathError,
@@ -28,12 +29,9 @@ from ._exceptions import (
     ValuePathError,
 )
 
-if TYPE_CHECKING:
-    import types
-    from typing import BinaryIO, Callable, Iterable, TextIO, Union
 
 
-class FileOpsProtocol(Protocol):
+class FileOperationsProtocol(Protocol):
     def exists(self, path: str | PurePath) -> bool:
         ...
 
@@ -109,7 +107,7 @@ class FileOpsProtocol(Protocol):
         ...
 
 
-class FileOps:
+class FileOperations:
     _chunk_size = io.DEFAULT_BUFFER_SIZE
     # 8192 on my machine, which ops.pebble.Client._chunk_size hard codes
 
@@ -137,7 +135,7 @@ class FileOps:
             try:
                 return self._container.list_files(path, pattern=pattern, itself=itself)
             except ops.pebble.APIError as e:
-                for error in (FileNotFoundAPIError, ValueAPIError):
+                for error in (ValueAPIError,):
                     if error._matches(e):
                         raise error._from_error(e, path=path)
                 raise
@@ -150,7 +148,7 @@ class FileOps:
         if not ppath.is_absolute():
             raise RelativePathError._from_path(path)
         if not ppath.exists():
-            raise FileNotFoundAPIError._from_path(path)
+            raise APIError.FileNotFoundError.from_path(path)
         if itself or not ppath.is_dir():
             paths = [ppath]
         else:
@@ -630,7 +628,7 @@ def _copy(source: Path, dest: Path):
 
 # type checking
 def _type_check(_container: ops.Container):  # pyright: ignore[reportUnusedFunction]
-    _f: FileOpsProtocol
-    _f = FileOps()
-    _f = FileOps(_container)
+    _f: FileOperationsProtocol
+    _f = FileOperations()
+    _f = FileOperations(_container)
     _f = _container

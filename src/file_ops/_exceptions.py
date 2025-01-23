@@ -7,50 +7,27 @@ from pathlib import PurePath
 from typing import TYPE_CHECKING
 
 import ops
+import ops.pebble as pebble
 
 if TYPE_CHECKING:
     from typing_extensions import Self
 
 
-class FileNotFoundAPIError(ops.pebble.APIError, builtins.FileNotFoundError):
-    def __init__(self, body: dict[str, object], code: int, status: str, message: str, file: str):
-        # both __init__ methods will call Exception.__init__ and set self.args
-        # we want to have the pebble.Error version since we're using its repr etc
-        builtins.FileNotFoundError.__init__(self, errno.ENOENT, os.strerror(errno.ENOENT), file)
-        ops.pebble.APIError.__init__(self, body=body, code=code, status=status, message=message)
-
-    def __str__(self) -> str:
-        # manually avoid calling FileNotFoundError.__str__ since we have APIError.args
-        return ops.pebble.APIError.__str__(self)
-
-    @classmethod
-    def _from_error(cls, error: ops.pebble.APIError, path: PurePath | str) -> Self:
-        assert cls._matches(error), f'{cls.__name__} does not match {error!r} {error!s}'
-        return cls(
-            body=error.body,
-            code=error.code,
-            status=error.status,
-            message=error.message,
-            file=str(path),
-        )
-
-    @classmethod
-    def _from_path(cls, path: PurePath | str) -> Self:
-        method = 'stat'
-        code = 404
-        status = 'Not Found'
-        message = f'{method} {path}: no such file or directory'
-        body: dict[str, object] = {
-            'type': 'error',
-            'status-code': code,
-            'status': status,
-            'result': {'message': message, 'kind': 'not-found'},
-        }
-        return cls(body=body, code=code, status=status, message=message, file=str(path))
-
-    @classmethod
-    def _matches(cls, error: ops.pebble.Error) -> bool:
-        return isinstance(error, ops.pebble.APIError) and error.code == 404
+class APIError:
+    class FileNotFoundError:
+        @staticmethod
+        def from_path(path: PurePath | str) -> pebble.APIError:
+            method = 'stat'
+            code = 404
+            status = 'Not Found'
+            message = f'{method} {path}: no such file or directory'
+            body: dict[str, object] = {
+                'type': 'error',
+                'status-code': code,
+                'status': status,
+                'result': {'message': message, 'kind': 'not-found'},
+            }
+            return pebble.APIError(body=body, code=code, status=status, message=message)
 
 
 class ValueAPIError(ops.pebble.APIError, builtins.ValueError):
