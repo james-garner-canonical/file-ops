@@ -530,14 +530,14 @@ class TestMakeDir:
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations(container).make_dir(subdirectory)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
+        assert exceptions.PathError.FileNotFound.matches(exception_context.value)
         assert not subdirectory.exists()
         assert not directory.exists()
         # no container
-        with pytest.raises(FileNotFoundError) as exception_context:
+        with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations().make_dir(subdirectory)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
+        assert exceptions.PathError.FileNotFound.matches(exception_context.value)
         assert not subdirectory.exists()
         assert not directory.exists()
 
@@ -800,12 +800,12 @@ class TestRemovePath:
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations(container).remove_path(file)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
+        assert exceptions.PathError.FileNotFound.matches(exception_context.value)
         # without container
-        with pytest.raises(FileNotFoundError) as exception_context:
+        with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations().remove_path(file)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
+        assert exceptions.PathError.FileNotFound.matches(exception_context.value)
 
     @staticmethod
     def test_target_parent_doesnt_exist(container: ops.Container, tmp_path: pathlib.Path):
@@ -814,12 +814,12 @@ class TestRemovePath:
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations(container).remove_path(file)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
+        assert exceptions.PathError.FileNotFound.matches(exception_context.value)
         # without container
-        with pytest.raises(FileNotFoundError) as exception_context:
+        with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations().remove_path(file)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
+        assert exceptions.PathError.FileNotFound.matches(exception_context.value)
 
     @staticmethod
     def test_path_not_absolute(container: ops.Container):
@@ -977,15 +977,15 @@ class TestPush:
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations(container).push(path=path, source=contents)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
+        assert exceptions.PathError.FileNotFound.matches(exception_context.value)
         assert not path.exists()
         assert not subdirectory.exists()
         assert not directory.exists()
         # no container
-        with pytest.raises(FileNotFoundError) as exception_context:
+        with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations().make_dir(subdirectory)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
+        assert exceptions.PathError.FileNotFound.matches(exception_context.value)
         assert not path.exists()
         assert not subdirectory.exists()
         assert not directory.exists()
@@ -1053,12 +1053,12 @@ class TestPull:
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations(container).pull(path)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
+        assert exceptions.PathError.FileNotFound.matches(exception_context.value)
         # no container
-        with pytest.raises(FileNotFoundError) as exception_context:
+        with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations().pull(path)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.FileNotFoundPathError)
+        assert exceptions.PathError.FileNotFound.matches(exception_context.value)
 
     @staticmethod
     def test_no_permission(container: ops.Container, tmp_path: pathlib.Path):

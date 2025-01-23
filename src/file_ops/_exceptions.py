@@ -81,30 +81,17 @@ class PathError:
                 and 'paths must be absolute' in error.message
             )
 
+    class FileNotFound:
+        @staticmethod
+        def from_path(path: PurePath | str, method: str) -> pebble.PathError:
+            return pebble.PathError(
+                kind='not-found',
+                message=f'{method} {path}: no such file or directory',
+            )
 
-class FileNotFoundPathError(ops.pebble.PathError, builtins.FileNotFoundError):
-    def __init__(self, kind: str, message: str, file: str):
-        # both __init__ methods will call Exception.__init__ and set self.args
-        # we want to have the pebble.Error version since we're using its repr etc
-        builtins.FileNotFoundError.__init__(self, errno.ENOENT, os.strerror(errno.ENOENT), file)
-        ops.pebble.PathError.__init__(self, kind=kind, message=message)
-
-    @classmethod
-    def _from_error(cls, error: ops.pebble.PathError, path: PurePath | str) -> Self:
-        assert cls._matches(error), f'{cls.__name__} does not match {error!r} {error!s}'
-        return cls(kind=error.kind, message=error.message, file=str(path))
-
-    @classmethod
-    def _from_path(cls, path: PurePath | str, method: str) -> Self:
-        return cls(
-            kind='not-found',
-            message=f'{method} {path}: no such file or directory',
-            file=str(path),
-        )
-
-    @classmethod
-    def _matches(cls, error: ops.pebble.Error) -> bool:
-        return isinstance(error, ops.pebble.PathError) and error.kind == 'not-found'
+        @staticmethod
+        def matches(error: ops.pebble.Error) -> bool:
+            return isinstance(error, ops.pebble.PathError) and error.kind == 'not-found'
 
 
 class LookupPathError(ops.pebble.PathError, builtins.LookupError):

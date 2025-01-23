@@ -21,7 +21,6 @@ import ops
 from ._exceptions import (
     APIError,
     PathError,
-    FileNotFoundPathError,
     LookupPathError,
     PermissionPathError,
     ValuePathError,
@@ -177,7 +176,6 @@ class FileOperations:
                 )
             except ops.pebble.PathError as e:
                 for error in (
-                    FileNotFoundPathError,
                     LookupPathError,
                     PermissionPathError,
                     ValuePathError,
@@ -256,7 +254,7 @@ class FileOperations:
             try:
                 return self._container.remove_path(path, recursive=recursive)
             except ops.pebble.PathError as e:
-                for error in (FileNotFoundPathError, ValuePathError):
+                for error in (ValuePathError,):
                     if error._matches(e):
                         raise error._from_error(e, path=path)
                 raise
@@ -264,7 +262,7 @@ class FileOperations:
         if not ppath.is_absolute():
             raise PathError.RelativePath.from_path(path=ppath)
         if not ppath.exists():
-            raise FileNotFoundPathError._from_path(path=ppath, method='remove')
+            raise PathError.FileNotFound.from_path(path=ppath, method='remove')
         _try_remove(ppath, recursive=recursive)
 
     def push(
@@ -281,25 +279,17 @@ class FileOperations:
         group: str | None = None,
     ) -> None:
         if self._container is not None:
-            try:
-                return self._container.push(
-                    path=path,
-                    source=source,
-                    encoding=encoding,
-                    make_dirs=make_dirs,
-                    permissions=permissions,
-                    user_id=user_id,
-                    user=user,
-                    group_id=group_id,
-                    group=group,
-                )
-            except ops.pebble.PathError as e:
-                # TODO: we'll need to cover at least all the same cases as make_dir I think
-                for error in (FileNotFoundPathError,):
-                    if error._matches(e):
-                        raise error._from_error(e, path=path)
-                raise
-
+            return self._container.push(
+                path=path,
+                source=source,
+                encoding=encoding,
+                make_dirs=make_dirs,
+                permissions=permissions,
+                user_id=user_id,
+                user=user,
+                group_id=group_id,
+                group=group,
+            )
         ppath = Path(path)
         if not ppath.is_absolute():
             raise PathError.RelativePath.from_path(path=ppath)
@@ -336,7 +326,7 @@ class FileOperations:
             try:
                 ppath.touch(mode=0o600)  # rw permissions to allow us to write the file
             except FileNotFoundError:
-                raise FileNotFoundPathError._from_path(path, method='open')
+                raise PathError.FileNotFound.from_path(path, method='open')
             _write_chunked(path=ppath, source_io=source_io, chunk_size=self._chunk_size, encoding=encoding)
         os.chmod(ppath, mode=permissions if permissions is not None else 0o644)  # Pebble default
 
@@ -356,7 +346,7 @@ class FileOperations:
             try:
                 return self._container.pull(path, encoding=encoding)
             except ops.pebble.PathError as e:
-                for error in(FileNotFoundPathError, PermissionPathError,):
+                for error in(PermissionPathError,):
                     if error._matches(e):
                         raise error._from_error(e, path=path)
                 raise
@@ -372,7 +362,7 @@ class FileOperations:
         except PermissionError as e:
             raise PermissionPathError._from_exception(e, path=ppath, method='open')
         except FileNotFoundError as e:
-            raise FileNotFoundPathError._from_path(path=ppath, method='stat')
+            raise PathError.FileNotFound.from_path(path=ppath, method='stat')
         return cast('Union[TextIO, BinaryIO]', f)
 
 
@@ -548,7 +538,7 @@ def _make_dir(
             os.mkdir(path, mode)
         except FileNotFoundError:
             if not make_parents or path.parent == path:
-                raise FileNotFoundPathError._from_path(path=path, method='mkdir')
+                raise PathError.FileNotFound.from_path(path=path, method='mkdir')
             _make_dir(
                 path.parent,
                 user=user,
