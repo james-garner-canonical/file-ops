@@ -5,7 +5,6 @@ from ._exceptions import (
     FileNotFoundPathError,
     LookupPathError,
     PermissionPathError,
-    RelativePathError,
     ValuePathError,
 )
 
@@ -17,6 +16,5 @@ __all__ = [
     'FileNotFoundPathError',
     'LookupPathError',
     'PermissionPathError',
-    'RelativePathError',
     'ValuePathError',
 ]

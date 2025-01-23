@@ -14,7 +14,24 @@ if TYPE_CHECKING:
 
 
 class APIError:
-    class FileNotFoundError:
+    class BadRequest:
+        @staticmethod
+        def from_path(path: PurePath | str, message: str) -> pebble.APIError:
+            code = 400
+            status = 'Bad Request'
+            body: dict[str, object] = {
+                'type': 'error',
+                'status-code': code,
+                'status': status,
+                'result': {'message': message, 'kind': 'generic-file-error'},
+            }
+            return pebble.APIError(body=body, code=code, status=status, message=message)
+
+        @staticmethod
+        def matches(error: ops.pebble.Error) -> bool:
+            return isinstance(error, ops.pebble.APIError) and error.code == 400
+
+    class FileNotFound:
         @staticmethod
         def from_path(path: PurePath | str) -> pebble.APIError:
             method = 'stat'
@@ -33,26 +50,9 @@ class APIError:
         def matches(error: ops.pebble.Error) -> bool:
             return isinstance(error, ops.pebble.APIError) and error.code == 404
 
-    class ValueError:
-        @staticmethod
-        def from_path(path: PurePath | str, message: str) -> pebble.APIError:
-            code = 400
-            status = 'Bad Request'
-            body: dict[str, object] = {
-                'type': 'error',
-                'status-code': code,
-                'status': status,
-                'result': {'message': message, 'kind': 'generic-file-error'},
-            }
-            return pebble.APIError(body=body, code=code, status=status, message=message)
-
-        @staticmethod
-        def matches(error: ops.pebble.Error) -> bool:
-            return isinstance(error, ops.pebble.APIError) and error.code == 400
-
 
 class PathError:
-    class FileExistsError:
+    class FileExists:
         @staticmethod
         def from_path(path: PurePath | str, method: str) -> pebble.PathError:
             return pebble.PathError(kind='generic-file-error', message=f'{method} {path}: file exists')
@@ -63,6 +63,22 @@ class PathError:
                 isinstance(error, pebble.PathError)
                 and error.kind == 'generic-file-error'
                 and 'file exists' in error.message
+            )
+
+    class RelativePath:
+        @staticmethod
+        def from_path(path: PurePath | str) -> pebble.PathError:
+            return pebble.PathError(
+                kind='generic-file-error',
+                message=f'paths must be absolute, got "{path}"',
+            )
+
+        @staticmethod
+        def matches(error: ops.pebble.Error) -> bool:
+            return (
+                isinstance(error, ops.pebble.PathError)
+                and error.kind == 'generic-file-error'
+                and 'paths must be absolute' in error.message
             )
 
 
@@ -148,31 +164,6 @@ class PermissionPathError(ops.pebble.PathError, builtins.PermissionError):
         return isinstance(error, ops.pebble.PathError) and error.kind == 'permission-denied'
 
 
-class RelativePathError(ops.pebble.PathError):
-    def __init__(self, kind: str, message: str):
-        super().__init__(kind=kind, message=message)
-
-    @classmethod
-    def _from_error(cls, error: ops.pebble.PathError, path: PurePath | str) -> Self:
-        assert cls._matches(error), f'{cls.__name__} does not match {error!r} {error!s}'
-        return cls(kind=error.kind, message=error.message)
-
-    @classmethod
-    def _from_path(cls, path: PurePath | str) -> Self:
-        return cls(
-            kind='generic-file-error',
-            message=f'paths must be absolute, got "{path}"',
-        )
-
-    @classmethod
-    def _matches(cls, error: ops.pebble.Error) -> bool:
-        return (
-            isinstance(error, ops.pebble.PathError)
-            and error.kind == 'generic-file-error'
-            and 'paths must be absolute' in error.message
-        )
-
-
 class ValuePathError(ops.pebble.PathError, builtins.ValueError):
     def __init__(self, kind: str, message: str, file: str):
         # both __init__ methods will call Exception.__init__ and set self.args
@@ -200,7 +191,7 @@ class ValuePathError(ops.pebble.PathError, builtins.ValueError):
             and error.kind == 'generic-file-error'
             and not any(
                 e._matches(error)  # pyright: ignore[reportPrivateUsage]
-                for e in (LookupPathError, RelativePathError)
+                for e in (LookupPathError,)
             )
-            and not any(e.matches(error) for e in (PathError.FileExistsError,))
+            and not any(e.matches(error) for e in (PathError.FileExists, PathError.RelativePath))
         )

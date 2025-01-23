@@ -24,7 +24,6 @@ from ._exceptions import (
     FileNotFoundPathError,
     LookupPathError,
     PermissionPathError,
-    RelativePathError,
     ValuePathError,
 )
 
@@ -131,18 +130,12 @@ class FileOperations:
         itself: bool = False,
     ) -> list[ops.pebble.FileInfo]:
         if self._container is not None:
-            try:
-                return self._container.list_files(path, pattern=pattern, itself=itself)
-            except ops.pebble.PathError as e:
-                for error in (RelativePathError,):
-                    if error._matches(e):
-                        raise error._from_error(e, path=path)
-                raise
+            return self._container.list_files(path, pattern=pattern, itself=itself)
         ppath = Path(path)
         if not ppath.is_absolute():
-            raise RelativePathError._from_path(path)
+            raise PathError.RelativePath.from_path(path)
         if not ppath.exists():
-            raise APIError.FileNotFoundError.from_path(path)
+            raise APIError.FileNotFound.from_path(path)
         if itself or not ppath.is_dir():
             paths = [ppath]
         else:
@@ -154,7 +147,7 @@ class FileOperations:
                 re.compile(pattern.replace('*', '.*').replace('?', '.?'))
                 # catch mismatched brackets etc
             except re.error:
-                raise APIError.ValueError.from_path(
+                raise APIError.BadRequest.from_path(
                     path=path, message=f'syntax error in pattern "{pattern}"'
                 )
             paths = [p for p in paths if fnmatch.fnmatch(str(p.name), pattern)]
@@ -187,7 +180,6 @@ class FileOperations:
                     FileNotFoundPathError,
                     LookupPathError,
                     PermissionPathError,
-                    RelativePathError,
                     ValuePathError,
                 ):
                     if error._matches(e):
@@ -195,7 +187,7 @@ class FileOperations:
                 raise
         directory = Path(path)
         if not directory.is_absolute():
-            raise RelativePathError._from_path(path=directory)
+            raise PathError.RelativePath.from_path(path=directory)
         try:
             _make_dir(
                 path=directory,
@@ -224,7 +216,7 @@ class FileOperations:
         source_paths = [Path(p) for p in source_paths]
         dest_dir = Path(dest_dir)
         if not dest_dir.is_absolute():
-            raise RelativePathError._from_path(path=dest_dir)
+            raise PathError.RelativePath.from_path(path=dest_dir)
         errors: list[tuple[str, Exception]] = []
         for path in source_paths:
             try:
@@ -252,7 +244,7 @@ class FileOperations:
         for path in source_paths:
             try:
                 if not path.is_absolute():
-                    raise RelativePathError._from_path(path=path)
+                    raise PathError.RelativePath.from_path(path=path)
                 _copy(source=path, dest=dest_dir)
             except (OSError, ops.pebble.Error) as e:
                 errors.append((str(path), e))
@@ -264,13 +256,13 @@ class FileOperations:
             try:
                 return self._container.remove_path(path, recursive=recursive)
             except ops.pebble.PathError as e:
-                for error in (FileNotFoundPathError, RelativePathError, ValuePathError):
+                for error in (FileNotFoundPathError, ValuePathError):
                     if error._matches(e):
                         raise error._from_error(e, path=path)
                 raise
         ppath = Path(path)
         if not ppath.is_absolute():
-            raise RelativePathError._from_path(path=ppath)
+            raise PathError.RelativePath.from_path(path=ppath)
         if not ppath.exists():
             raise FileNotFoundPathError._from_path(path=ppath, method='remove')
         _try_remove(ppath, recursive=recursive)
@@ -303,14 +295,14 @@ class FileOperations:
                 )
             except ops.pebble.PathError as e:
                 # TODO: we'll need to cover at least all the same cases as make_dir I think
-                for error in (FileNotFoundPathError, RelativePathError):
+                for error in (FileNotFoundPathError,):
                     if error._matches(e):
                         raise error._from_error(e, path=path)
                 raise
 
         ppath = Path(path)
         if not ppath.is_absolute():
-            raise RelativePathError._from_path(path=ppath)
+            raise PathError.RelativePath.from_path(path=ppath)
 
         source_io: io.StringIO | io.BytesIO | BinaryIO | TextIO
         if isinstance(source, str):
@@ -364,13 +356,13 @@ class FileOperations:
             try:
                 return self._container.pull(path, encoding=encoding)
             except ops.pebble.PathError as e:
-                for error in(FileNotFoundPathError, PermissionPathError, RelativePathError):
+                for error in(FileNotFoundPathError, PermissionPathError,):
                     if error._matches(e):
                         raise error._from_error(e, path=path)
                 raise
         ppath = Path(path)
         if not ppath.is_absolute():
-            raise RelativePathError._from_path(path=ppath)
+            raise PathError.RelativePath.from_path(path=ppath)
         try:
             f = ppath.open(
                 mode='r' if encoding is not None else 'rb',
@@ -575,7 +567,7 @@ def _make_dir(
             # Cannot rely on checking for EEXIST, since the operating system
             # could give priority to other errors like EACCES or EROFS
             if not make_parents:
-                raise PathError.FileExistsError.from_path(path=path, method='mkdir')
+                raise PathError.FileExists.from_path(path=path, method='mkdir')
 
 
 @contextmanager

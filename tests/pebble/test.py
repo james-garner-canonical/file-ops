@@ -190,11 +190,11 @@ class TestListFiles:
         with pytest.raises(ops.pebble.APIError) as exception_context:
             file_ops.FileOperations(container).list_files(interesting_dir, pattern=pattern)
         print(exception_context.value)
-        assert exceptions.APIError.ValueError.matches(exception_context.value)
+        assert exceptions.APIError.BadRequest.matches(exception_context.value)
         with pytest.raises(ops.pebble.APIError) as exception_context:
             file_ops.FileOperations().list_files(interesting_dir, pattern=pattern)
         print(exception_context.value)
-        assert exceptions.APIError.ValueError.matches(exception_context.value)
+        assert exceptions.APIError.BadRequest.matches(exception_context.value)
 
     @staticmethod
     def test_bad_pattern_empty_dir(container: ops.Container, tmp_path: pathlib.Path):
@@ -251,11 +251,11 @@ class TestListFiles:
         with pytest.raises(ops.pebble.APIError) as exception_context:
             file_ops.FileOperations(container).list_files(interesting_dir, pattern=pattern, itself=True)
         print(exception_context.value)
-        assert exceptions.APIError.ValueError.matches(exception_context.value)
+        assert exceptions.APIError.BadRequest.matches(exception_context.value)
         with pytest.raises(ops.pebble.APIError) as exception_context:
             file_ops.FileOperations().list_files(interesting_dir, pattern=pattern, itself=True)
         print(exception_context.value)
-        assert exceptions.APIError.ValueError.matches(exception_context.value)
+        assert exceptions.APIError.BadRequest.matches(exception_context.value)
 
     @staticmethod
     def test_target_doesnt_exist(container: ops.Container, tmp_path: pathlib.Path):
@@ -264,12 +264,12 @@ class TestListFiles:
         with pytest.raises(ops.pebble.APIError) as exception_context:
             file_ops.FileOperations(container).list_files(path)
         print(exception_context.value)
-        assert exceptions.APIError.FileNotFoundError.matches(exception_context.value)
+        assert exceptions.APIError.FileNotFound.matches(exception_context.value)
         # without container
         with pytest.raises(ops.pebble.APIError) as exception_context:
             file_ops.FileOperations().list_files(path)
         print(exception_context.value)
-        assert exceptions.APIError.FileNotFoundError.matches(exception_context.value)
+        assert exceptions.APIError.FileNotFound.matches(exception_context.value)
 
 
 @pytest.mark.skipif(
@@ -295,12 +295,12 @@ class TestMakeDir:
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations(container).make_dir(directory)
         print(exception_context.value)
-        assert exceptions.PathError.FileExistsError.matches(exception_context.value)
+        assert exceptions.PathError.FileExists.matches(exception_context.value)
         # without container
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations().make_dir(directory)
         print(exception_context.value)
-        assert exceptions.PathError.FileExistsError.matches(exception_context.value)
+        assert exceptions.PathError.FileExists.matches(exception_context.value)
 
     @staticmethod
     @pytest.mark.parametrize('mode', ALL_MODES)
@@ -598,12 +598,12 @@ class TestMakeDir:
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations(container).make_dir(subdirectory)
-        assert exceptions.PathError.FileExistsError.matches(exception_context.value)
+        assert exceptions.PathError.FileExists.matches(exception_context.value)
         print(exception_context.value)
         # without container
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations().make_dir(subdirectory)
-        assert exceptions.PathError.FileExistsError.matches(exception_context.value)
+        assert exceptions.PathError.FileExists.matches(exception_context.value)
         print(exception_context.value)
 
     @staticmethod
@@ -611,9 +611,10 @@ class TestMakeDir:
         path = pathlib.Path('path.test')
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations(container).make_dir(path)
-        assert isinstance(exception_context.value, file_ops.RelativePathError)
-        with pytest.raises(file_ops.RelativePathError):
+        assert exceptions.PathError.RelativePath.matches(exception_context.value)
+        with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations().make_dir(path)
+        assert exceptions.PathError.RelativePath.matches(exception_context.value)
 
     @staticmethod
     def test_chown_root_without_privileges(container: ops.Container, tmp_path: pathlib.Path):
@@ -825,9 +826,10 @@ class TestRemovePath:
         path = pathlib.Path('path.test')
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations(container).remove_path(path)
-        assert isinstance(exception_context.value, file_ops.RelativePathError)
-        with pytest.raises(file_ops.RelativePathError):
+        assert exceptions.PathError.RelativePath.matches(exception_context.value)
+        with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations().remove_path(path)
+        assert exceptions.PathError.RelativePath.matches(exception_context.value)
 
 
 @pytest.mark.skipif(
@@ -904,9 +906,10 @@ class TestPush:
         path = pathlib.Path('path.test')
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations(container).push(path, source='')
-        assert isinstance(exception_context.value, file_ops.RelativePathError)
-        with pytest.raises(file_ops.RelativePathError):
+        assert exceptions.PathError.RelativePath.matches(exception_context.value)
+        with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations().push(path, source='')
+        assert exceptions.PathError.RelativePath.matches(exception_context.value)
 
     @staticmethod
     @pytest.mark.parametrize('mode', ALL_MODES)
@@ -1078,9 +1081,10 @@ class TestPull:
         path = pathlib.Path('path.test')
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations(container).pull(path)
-        assert isinstance(exception_context.value, file_ops.RelativePathError)
-        with pytest.raises(file_ops.RelativePathError):
+        assert exceptions.PathError.RelativePath.matches(exception_context.value)
+        with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations().pull(path)
+        assert exceptions.PathError.RelativePath.matches(exception_context.value)
 
 
 def fileinfo_eq(self: ops.pebble.FileInfo, other: ops.pebble.FileInfo, include_last_modified: bool = False) -> bool:
