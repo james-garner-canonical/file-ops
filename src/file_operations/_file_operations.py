@@ -169,12 +169,12 @@ class FileOperations:
             raise _errors.PathError.RelativePath.from_path(path=directory)
         _make_dir(
             path=directory,
+            mode=permissions if permissions is not None else 0o755,
+            make_parents=make_parents,
             user=user,
             user_id=user_id,
             group=group,
             group_id=group_id,
-            make_parents=make_parents,
-            mode=permissions if permissions is not None else 0o755,
         )
 
     def push_path(
@@ -279,12 +279,12 @@ class FileOperations:
             # TODO: catch error here or make _make_dir raise the correct error internally
             _make_dir(
                 ppath.parent,
+                mode=0o755,  # following pebble
+                make_parents=True,
                 user=user,
                 user_id=user_id,
                 group=group,
                 group_id=group_id,
-                make_parents=True,
-                mode=0o755,  # following pebble
             )
 
         with _ChownContext(
@@ -483,14 +483,23 @@ _FT_MAP: dict[int, ops.pebble.FileType] = {
 
 def _make_dir(
     path: Path,
+    mode: int,
+    make_parents: bool,
     user: str | None,
     user_id: int | None,
     group: str | None,
     group_id: int | None,
-    make_parents: bool,
-    mode: int,
-):
-    """As pathlib.Path.mkdir, but handles chown and propagates mode to parents."""
+) -> None:
+    """As pathlib.Path.mkdir, but handles chown and propagates mode to parents.
+    """
+
+    def _try_make_dir(path: Path, mode: int) -> None:
+        try:
+            os.mkdir(path)
+        except PermissionError as e:
+            raise _errors.PathError.Permission.from_exception(e, path=path, method='mkdir')
+        os.chmod(path, mode)  # separate chmod to bypass umask
+
     with _ChownContext(
         path=path,
         user=user,
@@ -501,25 +510,20 @@ def _make_dir(
         on_error=path.rmdir,
     ):
         try:
-            os.mkdir(path)
-            os.chmod(path, mode)  # separate chmod to bypass umask
+            _try_make_dir(path, mode=mode)
         except FileNotFoundError:
             if not make_parents or path.parent == path:
                 raise _errors.PathError.FileNotFound.from_path(path=path, method='mkdir')
             _make_dir(
                 path.parent,
+                mode=mode,
+                make_parents=True,
                 user=user,
                 user_id=user_id,
                 group=group,
                 group_id=group_id,
-                make_parents=True,
-                mode=mode,
             )
-            try:
-                os.mkdir(path)
-                os.chmod(path, mode)
-            except PermissionError as e:
-                raise _errors.PathError.Permission.from_exception(e, path=path, method='mkdir')
+            _try_make_dir(path, mode=mode)
             # PermissionError if we can't read the parent directory, following pebble
             if not os.access(path.parent, os.R_OK):
                 raise _errors.PathError.Permission.from_exception(
@@ -527,8 +531,6 @@ def _make_dir(
                     path=path,
                     method='mkdir',
                 )
-        except PermissionError as e:
-            raise _errors.PathError.Permission.from_exception(e, path=path, method='mkdir')
         except OSError:
             # FileExistsError -- following pathlib.Path.mkdir:
             # Cannot rely on checking for EEXIST, since the operating system
