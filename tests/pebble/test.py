@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING
 
 import ops
 import pytest
-from file_ops import FileOperations, _errors
-from file_ops._file_ops import _path_to_fileinfo
+from file_operations import FileOperations, _errors
+from file_operations._file_operations import _path_to_fileinfo
 
 if TYPE_CHECKING:
     from typing import Iterator
