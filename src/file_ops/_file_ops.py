@@ -1,5 +1,3 @@
-# pyright: reportPrivateUsage=false
-
 from __future__ import annotations
 
 import datetime
@@ -14,7 +12,7 @@ import stat
 import types
 from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path, PurePath
-from typing import BinaryIO, Callable, Iterable, Protocol, TextIO, Union, cast, overload
+from typing import BinaryIO, Callable, Iterable, Iterator, Protocol, TextIO, Union, cast, overload
 
 import ops
 
