@@ -113,32 +113,20 @@ class PathError:
                 )
             )
 
+    class Permission:
+        @staticmethod
+        def from_exception(
+            exception: builtins.PermissionError | builtins.KeyError, path: PurePath | str, method: str
+        ) -> pebble.PathError:
+            error_number = getattr(exception, 'errno', None) or errno.EPERM
+            return pebble.PathError(
+                kind='permission-denied',
+                message=f'{method} {path}: {os.strerror(error_number)}',
+            )
 
-class PermissionPathError(ops.pebble.PathError, builtins.PermissionError):
-    def __init__(self, kind: str, message: str, error_number: int, file: str):
-        # both __init__ methods will call Exception.__init__ and set self.args
-        # we want to have the pebble.Error version since we're using its repr etc
-        builtins.PermissionError.__init__(self, error_number, os.strerror(error_number), file)
-        ops.pebble.PathError.__init__(self, kind=kind, message=message)
-
-    @classmethod
-    def _from_error(cls, error: ops.pebble.PathError, path: PurePath | str) -> Self:
-        assert cls._matches(error), f'{cls.__name__} does not match {error!r} {error!s}'
-        return cls(kind=error.kind, message=error.message, error_number=errno.EPERM, file=str(path))
-
-    @classmethod
-    def _from_exception(cls, error: builtins.PermissionError | builtins.KeyError, path: PurePath | str, method: str) -> Self:
-        error_number = getattr(error, 'errno', None) or errno.EPERM
-        return cls(
-            kind='permission-denied',
-            message=f'{method} {path}: {os.strerror(error_number)}',
-            error_number=error_number,
-            file=str(path),
-        )
-
-    @classmethod
-    def _matches(cls, error: ops.pebble.Error) -> bool:
-        return isinstance(error, ops.pebble.PathError) and error.kind == 'permission-denied'
+        @classmethod
+        def matches(cls, error: ops.pebble.Error) -> bool:
+            return isinstance(error, ops.pebble.PathError) and error.kind == 'permission-denied'
 
 
 class ValuePathError(ops.pebble.PathError, builtins.ValueError):

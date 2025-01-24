@@ -21,7 +21,6 @@ import ops
 from ._exceptions import (
     APIError,
     PathError,
-    PermissionPathError,
     ValuePathError,
 )
 
@@ -174,10 +173,7 @@ class FileOperations:
                     group=group,
                 )
             except ops.pebble.PathError as e:
-                for error in (
-                    PermissionPathError,
-                    ValuePathError,
-                ):
+                for error in (ValuePathError,):
                     if error._matches(e):
                         raise error._from_error(e, path=path)
                 raise
@@ -195,7 +191,7 @@ class FileOperations:
                 mode=permissions if permissions is not None else 0o755,
             )
         except PermissionError as e:
-            raise PermissionPathError._from_exception(e, path=path, method='mkdir')
+            raise PathError.Permission.from_exception(e, path=path, method='mkdir')
 
     def push_path(
         self,
@@ -341,13 +337,7 @@ class FileOperations:
         encoding: str | None = 'utf-8',
     ) -> BinaryIO | TextIO:
         if self._container is not None:
-            try:
-                return self._container.pull(path, encoding=encoding)
-            except ops.pebble.PathError as e:
-                for error in(PermissionPathError,):
-                    if error._matches(e):
-                        raise error._from_error(e, path=path)
-                raise
+            return self._container.pull(path, encoding=encoding)
         ppath = Path(path)
         if not ppath.is_absolute():
             raise PathError.RelativePath.from_path(path=ppath)
@@ -358,7 +348,7 @@ class FileOperations:
                 newline='' if encoding is not None else None,
             )
         except PermissionError as e:
-            raise PermissionPathError._from_exception(e, path=ppath, method='open')
+            raise PathError.Permission.from_exception(e, path=ppath, method='open')
         except FileNotFoundError as e:
             raise PathError.FileNotFound.from_path(path=ppath, method='stat')
         return cast('Union[TextIO, BinaryIO]', f)
@@ -420,7 +410,7 @@ class _ChownContext(AbstractContextManager['_ChownContext', None]):
             raise PathError.Lookup.from_exception(e, path=self.path, method=self.method)
         except PermissionError as e:
             self.on_error()
-            raise PermissionPathError._from_exception(e, path=self.path, method=self.method)
+            raise PathError.Permission.from_exception(e, path=self.path, method=self.method)
 
     @staticmethod
     def _get_user_arg(str_name: str | None, int_id: int | None) -> str | int | None:
