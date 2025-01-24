@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 import unittest.mock
 import os
 import pathlib
@@ -9,7 +11,7 @@ from typing import TYPE_CHECKING
 import ops
 import pytest
 from file_ops import FileOperations, _errors
-from file_ops._file_ops import _path_to_fileinfo  # pyright: ignore[reportPrivateUsage]
+from file_ops._file_ops import _path_to_fileinfo
 
 if TYPE_CHECKING:
     from typing import Iterator
