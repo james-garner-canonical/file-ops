@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import builtins
 import errno
 import os
 from pathlib import PurePath
@@ -91,7 +90,7 @@ class PathError:
     class Lookup:
         @staticmethod
         def from_exception(
-            exception: builtins.LookupError | builtins.KeyError, path: PurePath | str, method: str
+            exception: LookupError | KeyError, path: PurePath | str, method: str
         ) -> pebble.PathError:
             # TODO: does anything raise LookupError? We don't catch it in _file_ops currently
             return pebble.PathError(kind='generic-file-error', message=f'{method} {path}: {exception}')
@@ -111,7 +110,7 @@ class PathError:
     class Permission:
         @staticmethod
         def from_exception(
-            exception: builtins.PermissionError | builtins.KeyError, path: PurePath | str, method: str
+            exception: PermissionError | KeyError, path: PurePath | str, method: str
         ) -> pebble.PathError:
             error_number = getattr(exception, 'errno', None) or errno.EPERM
             return pebble.PathError(
