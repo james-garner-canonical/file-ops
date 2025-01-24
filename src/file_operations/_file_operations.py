@@ -167,18 +167,15 @@ class FileOperations:
         directory = Path(path)
         if not directory.is_absolute():
             raise _errors.PathError.RelativePath.from_path(path=directory)
-        try:
-            _make_dir(
-                path=directory,
-                user=user,
-                user_id=user_id,
-                group=group,
-                group_id=group_id,
-                make_parents=make_parents,
-                mode=permissions if permissions is not None else 0o755,
-            )
-        except PermissionError as e:
-            raise _errors.PathError.Permission.from_exception(e, path=path, method='mkdir')
+        _make_dir(
+            path=directory,
+            user=user,
+            user_id=user_id,
+            group=group,
+            group_id=group_id,
+            make_parents=make_parents,
+            mode=permissions if permissions is not None else 0o755,
+        )
 
     def push_path(
         self,
@@ -518,12 +515,20 @@ def _make_dir(
                 make_parents=True,
                 mode=mode,
             )
-            os.mkdir(path)
-            os.chmod(path, mode)
+            try:
+                os.mkdir(path)
+                os.chmod(path, mode)
+            except PermissionError as e:
+                raise _errors.PathError.Permission.from_exception(e, path=path, method='mkdir')
             # PermissionError if we can't read the parent directory, following pebble
             if not os.access(path.parent, os.R_OK):
-                # TODO: raise correct pebble error, test for it
-                raise PermissionError(f'cannot read: {path.parent} (created via make_parents/make_dirs)')
+                raise _errors.PathError.Permission.from_exception(
+                    PermissionError(f'cannot read: {path.parent} (created via make_parents/make_dirs)'),
+                    path=path,
+                    method='mkdir',
+                )
+        except PermissionError as e:
+            raise _errors.PathError.Permission.from_exception(e, path=path, method='mkdir')
         except OSError:
             # FileExistsError -- following pathlib.Path.mkdir:
             # Cannot rely on checking for EEXIST, since the operating system

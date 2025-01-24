@@ -112,11 +112,13 @@ class PathError:
         def from_exception(
             exception: PermissionError | KeyError, path: PurePath | str, method: str
         ) -> pebble.PathError:
-            error_number = getattr(exception, 'errno', None) or errno.EPERM
-            return pebble.PathError(
-                kind='permission-denied',
-                message=f'{method} {path}: {os.strerror(error_number)}',
+            error_number = getattr(exception, 'errno', None)
+            message = (
+                f'[{error_number}, {os.strerror(error_number)}]'
+                if error_number is not None
+                else ' '.join(map(str, exception.args))
             )
+            return pebble.PathError(kind='permission-denied', message=f'{method} {path}: {message}')
 
         @classmethod
         def matches(cls, error: pebble.Error) -> bool:
