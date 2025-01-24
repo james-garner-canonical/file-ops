@@ -19,7 +19,7 @@ import ops
 from . import _errors
 
 
-class FileOperationsProtocol(Protocol):
+class _FileOperationsProtocol(Protocol):
     def exists(self, path: str | PurePath) -> bool:
         ...
 
@@ -572,7 +572,7 @@ def _copy(source: Path, dest: Path):
 
 # type checking
 def _type_check(_container: ops.Container):  # pyright: ignore[reportUnusedFunction]
-    _f: FileOperationsProtocol
+    _f: _FileOperationsProtocol
     _f = FileOperations()
     _f = FileOperations(_container)
     _f = _container
