@@ -1,6 +1,6 @@
 [project]
-name = "file-ops"
-description = "Helpers for working with files in charms. `pip install file-ops` and `import file_ops`"
+name = "file-operations"
+description = "Helpers for working with files in charms. `pip install file-operations` and `import file_operations`"
 readme = "README.md"
 requires-python = ">=3.8"
 authors = [
