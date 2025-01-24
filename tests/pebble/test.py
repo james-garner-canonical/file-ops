@@ -644,13 +644,13 @@ class TestMakeDir:
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations(container).make_dir(directory, user=user_name)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.LookupPathError)
+        assert exceptions.PathError.Lookup.matches(exception_context.value)
         assert not pathlib.Path(directory).exists()
         # without container
-        with pytest.raises(LookupError) as exception_context:
+        with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations().make_dir(directory, user=user_name)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.LookupPathError)
+        assert exceptions.PathError.Lookup.matches(exception_context.value)
         assert not pathlib.Path(directory).exists()
 
     @staticmethod
@@ -778,13 +778,13 @@ class TestMakeDir:
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations(container).make_dir(directory, user=user_name, user_id=user_id)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.LookupPathError)
+        assert exceptions.PathError.Lookup.matches(exception_context.value)
         assert not pathlib.Path(directory).exists()
         # without container
-        with pytest.raises(LookupError) as exception_context:
+        with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations().make_dir(directory, user=user_name, user_id=user_id)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.LookupPathError)
+        assert exceptions.PathError.Lookup.matches(exception_context.value)
         assert not pathlib.Path(directory).exists()
 
 

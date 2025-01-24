@@ -21,7 +21,6 @@ import ops
 from ._exceptions import (
     APIError,
     PathError,
-    LookupPathError,
     PermissionPathError,
     ValuePathError,
 )
@@ -176,7 +175,6 @@ class FileOperations:
                 )
             except ops.pebble.PathError as e:
                 for error in (
-                    LookupPathError,
                     PermissionPathError,
                     ValuePathError,
                 ):
@@ -385,7 +383,7 @@ class _ChownContext(AbstractContextManager['_ChownContext', None]):
             user_arg = self._get_user_arg(str_name=user, int_id=user_id)
             group_arg = self._get_group_arg(str_name=group, int_id=group_id)
         except KeyError as e:
-            raise LookupPathError._from_exception(e, path=path, method=method)
+            raise PathError.Lookup.from_exception(e, path=path, method=method)
         except ValueError as e:
             raise ValuePathError._from_path(path=path, method=method, message=str(e))
         if user_arg is None and group_arg is not None:
@@ -419,7 +417,7 @@ class _ChownContext(AbstractContextManager['_ChownContext', None]):
             self._try_chown(self.path, user=self.user_arg, group=self.group_arg)
         except KeyError as e:
             self.on_error()
-            raise LookupPathError._from_exception(e, path=self.path, method=self.method)
+            raise PathError.Lookup.from_exception(e, path=self.path, method=self.method)
         except PermissionError as e:
             self.on_error()
             raise PermissionPathError._from_exception(e, path=self.path, method=self.method)

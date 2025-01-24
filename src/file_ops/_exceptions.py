@@ -93,35 +93,25 @@ class PathError:
         def matches(error: ops.pebble.Error) -> bool:
             return isinstance(error, ops.pebble.PathError) and error.kind == 'not-found'
 
+    class Lookup:
+        @staticmethod
+        def from_exception(
+            exception: builtins.LookupError | builtins.KeyError, path: PurePath | str, method: str
+        ) -> pebble.PathError:
+            # TODO: does anything raise LookupError? We don't catch it in _file_ops currently
+            return pebble.PathError(kind='generic-file-error', message=f'{method} {path}: {exception}')
 
-class LookupPathError(ops.pebble.PathError, builtins.LookupError):
-    def __init__(self, kind: str, message: str):
-        # both __init__ methods will call Exception.__init__ and set self.args
-        # we want to have the pebble.Error version since we're using its repr etc
-        builtins.LookupError.__init__(self, message)
-        ops.pebble.PathError.__init__(self, kind=kind, message=message)
-
-    @classmethod
-    def _from_error(cls, error: ops.pebble.PathError, path: PurePath | str) -> Self:
-        assert cls._matches(error), f'{cls.__name__} does not match {error!r} {error!s}'
-        return cls(kind=error.kind, message=error.message)
-
-    @classmethod
-    def _from_exception(
-        cls, error: builtins.LookupError | builtins.KeyError, path: PurePath | str, method: str
-    ) -> Self:
-        return cls(
-            kind='generic-file-error',
-            message=f'{method} {path}: {error}',
-        )
-
-    @classmethod
-    def _matches(cls, error: ops.pebble.Error) -> bool:
-        return (
-            isinstance(error, ops.pebble.PathError)
-            and error.kind == 'generic-file-error'
-            and ('unknown user' in error.message or 'unknown group' in error.message)
-        )
+        @staticmethod
+        def matches(error: ops.pebble.Error) -> bool:
+            return (
+                isinstance(error, ops.pebble.PathError)
+                and error.kind == 'generic-file-error'
+                and (
+                    ('unknown user' in error.message or 'unknown group' in error.message)  # from pebble
+                    or ('name not found' in error.message)  # from grp/pwd KeyError
+                    # TODO: catch KeyError and raise something with a pebble-like message?
+                )
+            )
 
 
 class PermissionPathError(ops.pebble.PathError, builtins.PermissionError):
@@ -177,8 +167,8 @@ class ValuePathError(ops.pebble.PathError, builtins.ValueError):
             isinstance(error, ops.pebble.PathError)
             and error.kind == 'generic-file-error'
             and not any(
-                e._matches(error)  # pyright: ignore[reportPrivateUsage]
-                for e in (LookupPathError,)
+                e.matches(error)
+                for e
+                in (PathError.FileExists, PathError.RelativePath, PathError.Lookup)
             )
-            and not any(e.matches(error) for e in (PathError.FileExists, PathError.RelativePath))
         )
