@@ -18,11 +18,7 @@ from typing import BinaryIO, Callable, Iterable, Protocol, TextIO, Union, cast, 
 
 import ops
 
-from ._exceptions import (
-    APIError,
-    PathError,
-)
-
+from . import _exceptions
 
 
 class FileOperationsProtocol(Protocol):
@@ -129,9 +125,9 @@ class FileOperations:
             return self._container.list_files(path, pattern=pattern, itself=itself)
         ppath = Path(path)
         if not ppath.is_absolute():
-            raise PathError.RelativePath.from_path(path)
+            raise _exceptions.PathError.RelativePath.from_path(path)
         if not ppath.exists():
-            raise APIError.FileNotFound.from_path(path)
+            raise _exceptions.APIError.FileNotFound.from_path(path)
         if itself or not ppath.is_dir():
             paths = [ppath]
         else:
@@ -143,7 +139,7 @@ class FileOperations:
                 re.compile(pattern.replace('*', '.*').replace('?', '.?'))
                 # catch mismatched brackets etc
             except re.error:
-                raise APIError.BadRequest.from_path(
+                raise _exceptions.APIError.BadRequest.from_path(
                     path=path, message=f'syntax error in pattern "{pattern}"'
                 )
             paths = [p for p in paths if fnmatch.fnmatch(str(p.name), pattern)]
@@ -172,7 +168,7 @@ class FileOperations:
             )
         directory = Path(path)
         if not directory.is_absolute():
-            raise PathError.RelativePath.from_path(path=directory)
+            raise _exceptions.PathError.RelativePath.from_path(path=directory)
         try:
             _make_dir(
                 path=directory,
@@ -184,7 +180,7 @@ class FileOperations:
                 mode=permissions if permissions is not None else 0o755,
             )
         except PermissionError as e:
-            raise PathError.Permission.from_exception(e, path=path, method='mkdir')
+            raise _exceptions.PathError.Permission.from_exception(e, path=path, method='mkdir')
 
     def push_path(
         self,
@@ -201,7 +197,7 @@ class FileOperations:
         source_paths = [Path(p) for p in source_paths]
         dest_dir = Path(dest_dir)
         if not dest_dir.is_absolute():
-            raise PathError.RelativePath.from_path(path=dest_dir)
+            raise _exceptions.PathError.RelativePath.from_path(path=dest_dir)
         errors: list[tuple[str, Exception]] = []
         for path in source_paths:
             try:
@@ -229,7 +225,7 @@ class FileOperations:
         for path in source_paths:
             try:
                 if not path.is_absolute():
-                    raise PathError.RelativePath.from_path(path=path)
+                    raise _exceptions.PathError.RelativePath.from_path(path=path)
                 _copy(source=path, dest=dest_dir)
             except (OSError, ops.pebble.Error) as e:
                 errors.append((str(path), e))
@@ -241,9 +237,9 @@ class FileOperations:
             return self._container.remove_path(path, recursive=recursive)
         ppath = Path(path)
         if not ppath.is_absolute():
-            raise PathError.RelativePath.from_path(path=ppath)
+            raise _exceptions.PathError.RelativePath.from_path(path=ppath)
         if not ppath.exists():
-            raise PathError.FileNotFound.from_path(path=ppath, method='remove')
+            raise _exceptions.PathError.FileNotFound.from_path(path=ppath, method='remove')
         _try_remove(ppath, recursive=recursive)
 
     def push(
@@ -273,7 +269,7 @@ class FileOperations:
             )
         ppath = Path(path)
         if not ppath.is_absolute():
-            raise PathError.RelativePath.from_path(path=ppath)
+            raise _exceptions.PathError.RelativePath.from_path(path=ppath)
 
         source_io: io.StringIO | io.BytesIO | BinaryIO | TextIO
         if isinstance(source, str):
@@ -307,7 +303,7 @@ class FileOperations:
             try:
                 ppath.touch(mode=0o600)  # rw permissions to allow us to write the file
             except FileNotFoundError:
-                raise PathError.FileNotFound.from_path(path, method='open')
+                raise _exceptions.PathError.FileNotFound.from_path(path, method='open')
             _write_chunked(path=ppath, source_io=source_io, chunk_size=self._chunk_size, encoding=encoding)
         os.chmod(ppath, mode=permissions if permissions is not None else 0o644)  # Pebble default
 
@@ -327,7 +323,7 @@ class FileOperations:
             return self._container.pull(path, encoding=encoding)
         ppath = Path(path)
         if not ppath.is_absolute():
-            raise PathError.RelativePath.from_path(path=ppath)
+            raise _exceptions.PathError.RelativePath.from_path(path=ppath)
         try:
             f = ppath.open(
                 mode='r' if encoding is not None else 'rb',
@@ -335,9 +331,9 @@ class FileOperations:
                 newline='' if encoding is not None else None,
             )
         except PermissionError as e:
-            raise PathError.Permission.from_exception(e, path=ppath, method='open')
+            raise _exceptions.PathError.Permission.from_exception(e, path=ppath, method='open')
         except FileNotFoundError as e:
-            raise PathError.FileNotFound.from_path(path=ppath, method='stat')
+            raise _exceptions.PathError.FileNotFound.from_path(path=ppath, method='stat')
         return cast('Union[TextIO, BinaryIO]', f)
 
 
@@ -360,18 +356,18 @@ class _ChownContext(AbstractContextManager['_ChownContext', None]):
             user_arg = self._get_user_arg(str_name=user, int_id=user_id)
             group_arg = self._get_group_arg(str_name=group, int_id=group_id)
         except KeyError as e:
-            raise PathError.Lookup.from_exception(e, path=path, method=method)
+            raise _exceptions.PathError.Lookup.from_exception(e, path=path, method=method)
         except ValueError as e:
-            raise PathError.Generic.from_path(path=path, method=method, message=str(e))
+            raise _exceptions.PathError.Generic.from_path(path=path, method=method, message=str(e))
         if user_arg is None and group_arg is not None:
-            raise PathError.Generic.from_path(
+            raise _exceptions.PathError.Generic.from_path(
                 path=path,
                 method=method,
                 message='cannot look up user and group: must specify user, not just group',
             )
         if isinstance(user_arg, int) and group_arg is None:
             # TODO: patch pebble so that this isn't an error case
-            raise PathError.Generic.from_path(
+            raise _exceptions.PathError.Generic.from_path(
                 path=path,
                 method=method,
                 message='cannot look up user and group: must specify group, not just UID',
@@ -394,10 +390,10 @@ class _ChownContext(AbstractContextManager['_ChownContext', None]):
             self._try_chown(self.path, user=self.user_arg, group=self.group_arg)
         except KeyError as e:
             self.on_error()
-            raise PathError.Lookup.from_exception(e, path=self.path, method=self.method)
+            raise _exceptions.PathError.Lookup.from_exception(e, path=self.path, method=self.method)
         except PermissionError as e:
             self.on_error()
-            raise PathError.Permission.from_exception(e, path=self.path, method=self.method)
+            raise _exceptions.PathError.Permission.from_exception(e, path=self.path, method=self.method)
 
     @staticmethod
     def _get_user_arg(str_name: str | None, int_id: int | None) -> str | int | None:
@@ -513,7 +509,7 @@ def _make_dir(
             os.mkdir(path, mode)
         except FileNotFoundError:
             if not make_parents or path.parent == path:
-                raise PathError.FileNotFound.from_path(path=path, method='mkdir')
+                raise _exceptions.PathError.FileNotFound.from_path(path=path, method='mkdir')
             _make_dir(
                 path.parent,
                 user=user,
@@ -532,7 +528,7 @@ def _make_dir(
             # Cannot rely on checking for EEXIST, since the operating system
             # could give priority to other errors like EACCES or EROFS
             if not make_parents:
-                raise PathError.FileExists.from_path(path=path, method='mkdir')
+                raise _exceptions.PathError.FileExists.from_path(path=path, method='mkdir')
 
 
 @contextmanager
