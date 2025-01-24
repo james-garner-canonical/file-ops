@@ -279,6 +279,7 @@ class FileOperations:
             source_io = source
 
         if make_dirs:
+            # TODO: catch error here or make _make_dir raise the correct error internally
             _make_dir(
                 ppath.parent,
                 user=user,
@@ -493,7 +494,7 @@ def _make_dir(
     mode: int,
 ):
     """As pathlib.Path.mkdir, but handles chown and propagates mode to parents."""
-    chown_context = _ChownContext(
+    with _ChownContext(
         path=path,
         user=user,
         user_id=user_id,
@@ -501,10 +502,10 @@ def _make_dir(
         group_id=group_id,
         method='mkdir',
         on_error=path.rmdir,
-    )
-    with chown_context, _clear_umask():
+    ):
         try:
-            os.mkdir(path, mode)
+            os.mkdir(path)
+            os.chmod(path, mode)  # separate chmod to bypass umask
         except FileNotFoundError:
             if not make_parents or path.parent == path:
                 raise _errors.PathError.FileNotFound.from_path(path=path, method='mkdir')
@@ -517,25 +518,18 @@ def _make_dir(
                 make_parents=True,
                 mode=mode,
             )
-            os.mkdir(path, mode)
+            os.mkdir(path)
+            os.chmod(path, mode)
             # PermissionError if we can't read the parent directory, following pebble
             if not os.access(path.parent, os.R_OK):
-                raise PermissionError(f'cannot read: {path.parent} (created via make_parents)')
+                # TODO: raise correct pebble error, test for it
+                raise PermissionError(f'cannot read: {path.parent} (created via make_parents/make_dirs)')
         except OSError:
             # FileExistsError -- following pathlib.Path.mkdir:
             # Cannot rely on checking for EEXIST, since the operating system
             # could give priority to other errors like EACCES or EROFS
             if not make_parents:
                 raise _errors.PathError.FileExists.from_path(path=path, method='mkdir')
-
-
-@contextmanager
-def _clear_umask() -> Iterator[None]:
-    original_mask = os.umask(0)
-    try:
-        yield None
-    finally:
-        os.umask(original_mask)
 
 
 def _try_remove(path: Path, recursive: bool) -> None:
