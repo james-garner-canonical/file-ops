@@ -10,89 +10,13 @@ import re
 import shutil
 import stat
 import types
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import AbstractContextManager
 from pathlib import Path, PurePath
-from typing import BinaryIO, Callable, Iterable, Iterator, Protocol, TextIO, Union, cast, overload
+from typing import BinaryIO, Callable, Iterable, Protocol, TextIO, Union, cast, overload
 
 import ops
 
 from . import _errors
-
-
-class _FileOperationsProtocol(Protocol):
-    def exists(self, path: str | PurePath) -> bool:
-        ...
-
-    def isdir(self, path: str | PurePath) -> bool:
-        ...
-
-    def list_files(
-        self,
-        path: str | PurePath,
-        *,
-        pattern: str | None = None,
-        itself: bool = False,
-    ) -> list[ops.pebble.FileInfo]:
-        ...
-
-    def make_dir(
-        self,
-        path: str | PurePath,
-        *,
-        make_parents: bool = False,
-        permissions: int | None = None,
-        user_id: int | None = None,
-        user: str | None = None,
-        group_id: int | None = None,
-        group: str | None = None,
-    ) -> None:
-        ...
-
-    def push_path(
-        self,
-        source_path: str | Path | Iterable[str | Path],
-        dest_dir: str | PurePath,
-    ) -> None:
-        ...
-
-    def pull_path(
-        self,
-        source_path: str | PurePath | Iterable[str | PurePath],
-        dest_dir: str | Path,
-    ) -> None:
-        ...
-
-    def remove_path(self, path: str | PurePath, *, recursive: bool = False) -> None:
-        ...
-
-    def push(
-        self,
-        path: str | PurePath,
-        source: bytes | str | BinaryIO | TextIO,
-        *,
-        encoding: str = 'utf-8',
-        make_dirs: bool = False,
-        permissions: int | None = None,
-        user_id: int | None = None,
-        user: str | None = None,
-        group_id: int | None = None,
-        group: str | None = None,
-    ) -> None:
-        ...
-
-    @overload
-    def pull(self, path: str | PurePath, *, encoding: None) -> BinaryIO:
-        ...
-    @overload
-    def pull(self, path: str | PurePath, *, encoding: str = 'utf-8') -> TextIO:
-        ...
-    def pull(
-        self,
-        path: str | PurePath,
-        *,
-        encoding: str | None = 'utf-8',
-    ) -> BinaryIO | TextIO:
-        ...
 
 
 class FileOperations:
@@ -141,7 +65,7 @@ class FileOperations:
                     path=path, message=f'syntax error in pattern "{pattern}"'
                 )
             paths = [p for p in paths if fnmatch.fnmatch(str(p.name), pattern)]
-        return [_path_to_fileinfo(p) for p in paths]
+        return [_fileinfo_from_path(p) for p in paths]
 
     def make_dir(
         self,
@@ -184,7 +108,7 @@ class FileOperations:
     ) -> None:
         # TODO: tests and errors
         if self._container is not None:
-            self._container.push_path(source_path=source_path, dest_dir=dest_dir)
+            return self._container.push_path(source_path=source_path, dest_dir=dest_dir)
         if hasattr(source_path, '__iter__') and not isinstance(source_path, str):
             source_paths = cast(Iterable[Union[str, Path]], source_path)
         else:
@@ -209,7 +133,7 @@ class FileOperations:
     ) -> None:
         # TODO: tests and errors
         if self._container is not None:
-            self._container.pull_path(source_path=source_path, dest_dir=dest_dir)
+            return self._container.pull_path(source_path=source_path, dest_dir=dest_dir)
         if hasattr(source_path, '__iter__') and not isinstance(source_path, str):
             source_paths = cast(Iterable[Union[str, Path]], source_path)
         else:
@@ -333,6 +257,82 @@ class FileOperations:
         return cast('Union[TextIO, BinaryIO]', f)
 
 
+class _FileOperationsProtocol(Protocol):
+    def exists(self, path: str | PurePath) -> bool:
+        ...
+
+    def isdir(self, path: str | PurePath) -> bool:
+        ...
+
+    def list_files(
+        self,
+        path: str | PurePath,
+        *,
+        pattern: str | None = None,
+        itself: bool = False,
+    ) -> list[ops.pebble.FileInfo]:
+        ...
+
+    def make_dir(
+        self,
+        path: str | PurePath,
+        *,
+        make_parents: bool = False,
+        permissions: int | None = None,
+        user_id: int | None = None,
+        user: str | None = None,
+        group_id: int | None = None,
+        group: str | None = None,
+    ) -> None:
+        ...
+
+    def push_path(
+        self,
+        source_path: str | Path | Iterable[str | Path],
+        dest_dir: str | PurePath,
+    ) -> None:
+        ...
+
+    def pull_path(
+        self,
+        source_path: str | PurePath | Iterable[str | PurePath],
+        dest_dir: str | Path,
+    ) -> None:
+        ...
+
+    def remove_path(self, path: str | PurePath, *, recursive: bool = False) -> None:
+        ...
+
+    def push(
+        self,
+        path: str | PurePath,
+        source: bytes | str | BinaryIO | TextIO,
+        *,
+        encoding: str = 'utf-8',
+        make_dirs: bool = False,
+        permissions: int | None = None,
+        user_id: int | None = None,
+        user: str | None = None,
+        group_id: int | None = None,
+        group: str | None = None,
+    ) -> None:
+        ...
+
+    @overload
+    def pull(self, path: str | PurePath, *, encoding: None) -> BinaryIO:
+        ...
+    @overload
+    def pull(self, path: str | PurePath, *, encoding: str = 'utf-8') -> TextIO:
+        ...
+    def pull(
+        self,
+        path: str | PurePath,
+        *,
+        encoding: str | None = 'utf-8',
+    ) -> BinaryIO | TextIO:
+        ...
+
+
 class _ChownContext(AbstractContextManager['_ChownContext', None]):
     """Perform some user/group validation on init, and the rest+chown on exit.
 
@@ -450,7 +450,7 @@ class _ChownContext(AbstractContextManager['_ChownContext', None]):
             shutil.chown(path, group=group)
 
 
-def _path_to_fileinfo(path: Path) -> ops.pebble.FileInfo:
+def _fileinfo_from_path(path: Path) -> ops.pebble.FileInfo:
     stat_result = path.lstat()  # lstat because pebble doesn't follow symlinks
     utcoffset = datetime.datetime.now().astimezone().utcoffset()
     timezone = datetime.timezone(utcoffset) if utcoffset is not None else datetime.timezone.utc
