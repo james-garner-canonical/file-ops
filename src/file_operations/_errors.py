@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import errno
 import os
 from pathlib import PurePath
 
 from ops import pebble
 
 
-class APIError:
+class API:
     class BadRequest:
         @staticmethod
         def from_path(path: PurePath | str, message: str) -> pebble.APIError:
@@ -45,7 +44,7 @@ class APIError:
             return isinstance(error, pebble.APIError) and error.code == 404
 
 
-class PathError:
+class Path:
     class FileExists:
         @staticmethod
         def from_path(path: PurePath | str, method: str) -> pebble.PathError:
@@ -137,7 +136,7 @@ class PathError:
                 and not any(
                     e.matches(error)
                     for e
-                    in (PathError.FileExists, PathError.RelativePath, PathError.Lookup)
+                    in (Path.FileExists, Path.RelativePath, Path.Lookup)
                     # these also have kind 'generic-file-error'
                 )
             )
