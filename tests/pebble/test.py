@@ -692,12 +692,12 @@ class TestMakeDir:
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations(container).make_dir(directory, user_id=user_id)
         assert not directory.exists()
-        assert isinstance(exception_context.value, file_ops.ValuePathError)
+        assert exceptions.PathError.Generic.matches(exception_context.value)
         # without container
-        with pytest.raises(ValueError) as exception_context:
+        with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations().make_dir(directory, user_id=user_id)
         assert not directory.exists()
-        assert isinstance(exception_context.value, file_ops.ValuePathError)
+        assert exceptions.PathError.Generic.matches(exception_context.value)
 
     @staticmethod
     def test_chown_just_group_name(container: ops.Container, tmp_path: pathlib.Path):
@@ -708,12 +708,12 @@ class TestMakeDir:
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations(container).make_dir(directory, group=group)
         assert not directory.exists()
-        assert isinstance(exception_context.value, file_ops.ValuePathError)
+        assert exceptions.PathError.Generic.matches(exception_context.value)
         # without container
-        with pytest.raises(ValueError) as exception_context:
+        with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations().make_dir(directory, group=group)
         assert not directory.exists()
-        assert isinstance(exception_context.value, file_ops.ValuePathError)
+        assert exceptions.PathError.Generic.matches(exception_context.value)
 
     @staticmethod
     def test_chown_just_group_id(container: ops.Container, tmp_path: pathlib.Path):
@@ -724,12 +724,12 @@ class TestMakeDir:
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations(container).make_dir(directory, group_id=group_id)
         assert not directory.exists()
-        assert isinstance(exception_context.value, file_ops.ValuePathError)
+        assert exceptions.PathError.Generic.matches(exception_context.value)
         # without container
-        with pytest.raises(ValueError) as exception_context:
+        with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations().make_dir(directory, group_id=group_id)
         assert not directory.exists()
-        assert isinstance(exception_context.value, file_ops.ValuePathError)
+        assert exceptions.PathError.Generic.matches(exception_context.value)
 
     @staticmethod
     def test_chown_just_group_args(container: ops.Container, tmp_path: pathlib.Path):
@@ -741,12 +741,12 @@ class TestMakeDir:
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations(container).make_dir(directory, group=group, group_id=group_id)
         assert not directory.exists()
-        assert isinstance(exception_context.value, file_ops.ValuePathError)
+        assert exceptions.PathError.Generic.matches(exception_context.value)
         # without container
-        with pytest.raises(ValueError) as exception_context:
+        with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations().make_dir(directory, group=group, group_id=group_id)
         assert not directory.exists()
-        assert isinstance(exception_context.value, file_ops.ValuePathError)
+        assert exceptions.PathError.Generic.matches(exception_context.value)
 
     @staticmethod
     def test_chown_when_user_and_user_id_both_exist_but_dont_match(container: ops.Container, tmp_path: pathlib.Path):
@@ -759,13 +759,13 @@ class TestMakeDir:
         with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations(container).make_dir(directory, user=user_name, user_id=user_id)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.ValuePathError)
+        assert exceptions.PathError.Generic.matches(exception_context.value)
         assert not pathlib.Path(directory).exists()
         # without container
-        with pytest.raises(ValueError) as exception_context:
+        with pytest.raises(ops.pebble.PathError) as exception_context:
             file_ops.FileOperations().make_dir(directory, user=user_name, user_id=user_id)
         print(exception_context.value)
-        assert isinstance(exception_context.value, file_ops.ValuePathError)
+        assert exceptions.PathError.Generic.matches(exception_context.value)
         assert not pathlib.Path(directory).exists()
 
     @staticmethod

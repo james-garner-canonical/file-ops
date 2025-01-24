@@ -21,7 +21,6 @@ import ops
 from ._exceptions import (
     APIError,
     PathError,
-    ValuePathError,
 )
 
 
@@ -162,21 +161,15 @@ class FileOperations:
         group: str | None = None,
     ) -> None:
         if self._container is not None:
-            try:
-                return self._container.make_dir(
-                    path,
-                    make_parents=make_parents,
-                    permissions=permissions,
-                    user_id=user_id,
-                    user=user,
-                    group_id=group_id,
-                    group=group,
-                )
-            except ops.pebble.PathError as e:
-                for error in (ValuePathError,):
-                    if error._matches(e):
-                        raise error._from_error(e, path=path)
-                raise
+            return self._container.make_dir(
+                path,
+                make_parents=make_parents,
+                permissions=permissions,
+                user_id=user_id,
+                user=user,
+                group_id=group_id,
+                group=group,
+            )
         directory = Path(path)
         if not directory.is_absolute():
             raise PathError.RelativePath.from_path(path=directory)
@@ -245,13 +238,7 @@ class FileOperations:
 
     def remove_path(self, path: str | PurePath, *, recursive: bool = False) -> None:
         if self._container is not None:
-            try:
-                return self._container.remove_path(path, recursive=recursive)
-            except ops.pebble.PathError as e:
-                for error in (ValuePathError,):
-                    if error._matches(e):
-                        raise error._from_error(e, path=path)
-                raise
+            return self._container.remove_path(path, recursive=recursive)
         ppath = Path(path)
         if not ppath.is_absolute():
             raise PathError.RelativePath.from_path(path=ppath)
@@ -375,16 +362,16 @@ class _ChownContext(AbstractContextManager['_ChownContext', None]):
         except KeyError as e:
             raise PathError.Lookup.from_exception(e, path=path, method=method)
         except ValueError as e:
-            raise ValuePathError._from_path(path=path, method=method, message=str(e))
+            raise PathError.Generic.from_path(path=path, method=method, message=str(e))
         if user_arg is None and group_arg is not None:
-            raise ValuePathError._from_path(
+            raise PathError.Generic.from_path(
                 path=path,
                 method=method,
                 message='cannot look up user and group: must specify user, not just group',
             )
         if isinstance(user_arg, int) and group_arg is None:
             # TODO: patch pebble so that this isn't an error case
-            raise ValuePathError._from_path(
+            raise PathError.Generic.from_path(
                 path=path,
                 method=method,
                 message='cannot look up user and group: must specify group, not just UID',

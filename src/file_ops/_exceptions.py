@@ -128,35 +128,20 @@ class PathError:
         def matches(cls, error: ops.pebble.Error) -> bool:
             return isinstance(error, ops.pebble.PathError) and error.kind == 'permission-denied'
 
+    class Generic:
+        @staticmethod
+        def from_path(path: PurePath | str, method: str, message: str) -> pebble.PathError:
+            return pebble.PathError(kind='generic-file-error', message=f'{method} {path}: {message}')
 
-class ValuePathError(ops.pebble.PathError, builtins.ValueError):
-    def __init__(self, kind: str, message: str, file: str):
-        # both __init__ methods will call Exception.__init__ and set self.args
-        # we want to have the pebble.Error version since we're using its repr etc
-        builtins.ValueError.__init__(self, message, file)
-        ops.pebble.PathError.__init__(self, kind=kind, message=message)
-
-    @classmethod
-    def _from_error(cls, error: ops.pebble.PathError, path: PurePath | str) -> Self:
-        assert cls._matches(error), f'{cls.__name__} does not match {error!r} {error!s}'
-        return cls(kind=error.kind, message=error.message, file=str(path))
-
-    @classmethod
-    def _from_path(cls, path: PurePath | str, method: str, message: str) -> Self:
-        return cls(
-            kind='generic-file-error',
-            message=f'{method} {path}: {message}',
-            file=str(path),
-        )
-
-    @classmethod
-    def _matches(cls, error: ops.pebble.Error) -> bool:
-        return (
-            isinstance(error, ops.pebble.PathError)
-            and error.kind == 'generic-file-error'
-            and not any(
-                e.matches(error)
-                for e
-                in (PathError.FileExists, PathError.RelativePath, PathError.Lookup)
+        @staticmethod
+        def matches(error: ops.pebble.Error) -> bool:
+            return (
+                isinstance(error, ops.pebble.PathError)
+                and error.kind == 'generic-file-error'
+                and not any(
+                    e.matches(error)
+                    for e
+                    in (PathError.FileExists, PathError.RelativePath, PathError.Lookup)
+                    # these also have kind 'generic-file-error'
+                )
             )
-        )
