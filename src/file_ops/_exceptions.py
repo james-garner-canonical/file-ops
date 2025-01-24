@@ -4,13 +4,8 @@ import builtins
 import errno
 import os
 from pathlib import PurePath
-from typing import TYPE_CHECKING
 
-import ops
-import ops.pebble as pebble
-
-if TYPE_CHECKING:
-    from typing_extensions import Self
+from ops import pebble
 
 
 class APIError:
@@ -23,13 +18,13 @@ class APIError:
                 'type': 'error',
                 'status-code': code,
                 'status': status,
-                'result': {'message': message, 'kind': 'generic-file-error'},
+                'result': {'message': f'{path}: {message}', 'kind': 'generic-file-error'},
             }
             return pebble.APIError(body=body, code=code, status=status, message=message)
 
         @staticmethod
-        def matches(error: ops.pebble.Error) -> bool:
-            return isinstance(error, ops.pebble.APIError) and error.code == 400
+        def matches(error: pebble.Error) -> bool:
+            return isinstance(error, pebble.APIError) and error.code == 400
 
     class FileNotFound:
         @staticmethod
@@ -47,8 +42,8 @@ class APIError:
             return pebble.APIError(body=body, code=code, status=status, message=message)
 
         @staticmethod
-        def matches(error: ops.pebble.Error) -> bool:
-            return isinstance(error, ops.pebble.APIError) and error.code == 404
+        def matches(error: pebble.Error) -> bool:
+            return isinstance(error, pebble.APIError) and error.code == 404
 
 
 class PathError:
@@ -74,9 +69,9 @@ class PathError:
             )
 
         @staticmethod
-        def matches(error: ops.pebble.Error) -> bool:
+        def matches(error: pebble.Error) -> bool:
             return (
-                isinstance(error, ops.pebble.PathError)
+                isinstance(error, pebble.PathError)
                 and error.kind == 'generic-file-error'
                 and 'paths must be absolute' in error.message
             )
@@ -90,8 +85,8 @@ class PathError:
             )
 
         @staticmethod
-        def matches(error: ops.pebble.Error) -> bool:
-            return isinstance(error, ops.pebble.PathError) and error.kind == 'not-found'
+        def matches(error: pebble.Error) -> bool:
+            return isinstance(error, pebble.PathError) and error.kind == 'not-found'
 
     class Lookup:
         @staticmethod
@@ -102,9 +97,9 @@ class PathError:
             return pebble.PathError(kind='generic-file-error', message=f'{method} {path}: {exception}')
 
         @staticmethod
-        def matches(error: ops.pebble.Error) -> bool:
+        def matches(error: pebble.Error) -> bool:
             return (
-                isinstance(error, ops.pebble.PathError)
+                isinstance(error, pebble.PathError)
                 and error.kind == 'generic-file-error'
                 and (
                     ('unknown user' in error.message or 'unknown group' in error.message)  # from pebble
@@ -125,8 +120,8 @@ class PathError:
             )
 
         @classmethod
-        def matches(cls, error: ops.pebble.Error) -> bool:
-            return isinstance(error, ops.pebble.PathError) and error.kind == 'permission-denied'
+        def matches(cls, error: pebble.Error) -> bool:
+            return isinstance(error, pebble.PathError) and error.kind == 'permission-denied'
 
     class Generic:
         @staticmethod
@@ -134,9 +129,9 @@ class PathError:
             return pebble.PathError(kind='generic-file-error', message=f'{method} {path}: {message}')
 
         @staticmethod
-        def matches(error: ops.pebble.Error) -> bool:
+        def matches(error: pebble.Error) -> bool:
             return (
-                isinstance(error, ops.pebble.PathError)
+                isinstance(error, pebble.PathError)
                 and error.kind == 'generic-file-error'
                 and not any(
                     e.matches(error)
