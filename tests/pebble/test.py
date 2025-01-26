@@ -1,4 +1,5 @@
 # pyright: reportPrivateUsage=false
+from __future__ import annotations
 
 import unittest.mock
 import os
@@ -6,15 +7,12 @@ import pathlib
 import socket
 import string
 import subprocess
-from typing import TYPE_CHECKING
+from typing import Iterator
 
 import ops
 import pytest
 from file_operations import FileOperations, _errors
 from file_operations import _fileinfo
-
-if TYPE_CHECKING:
-    from typing import Iterator
 
 
 DEBUG: bool = True
@@ -89,7 +87,7 @@ def text_files() -> dict[str, str]:
 
 
 @pytest.fixture
-def interesting_dir(tmp_path: pathlib.Path, text_files: dict[str, str]) -> 'Iterator[pathlib.Path]':
+def interesting_dir(tmp_path: pathlib.Path, text_files: dict[str, str]) -> Iterator[pathlib.Path]:
     (tmp_path / 'empty_dir').mkdir()
     empty_file = (tmp_path / 'empty_file.bin')
     empty_file.touch()
