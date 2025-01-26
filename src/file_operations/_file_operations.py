@@ -10,12 +10,23 @@ import shutil
 import types
 from contextlib import AbstractContextManager
 from pathlib import Path, PurePath
-from typing import BinaryIO, Callable, Iterable, Protocol, TextIO, Union, cast, overload
-
-import ops
+from typing import (
+    TYPE_CHECKING,
+    BinaryIO,
+    Callable,
+    Iterable,
+    Protocol,
+    TextIO,
+    Union,
+    cast,
+    overload,
+)
 
 from . import _errors
 from . import _fileinfo
+
+if TYPE_CHECKING:
+    import ops
 
 
 class FileOperations:
