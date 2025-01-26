@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 import ops
 import pytest
 from file_operations import FileOperations, _errors
-from file_operations._file_operations import _fileinfo_from_path
+from file_operations import _fileinfo
 
 if TYPE_CHECKING:
     from typing import Iterator
@@ -312,14 +312,14 @@ class TestMakeDir:
         assert not directory.exists()
         FileOperations(container).make_dir(directory,make_parents=True, permissions=permissions)
         assert directory.exists()
-        info_dir_c = _fileinfo_from_path(directory)
+        info_dir_c = _fileinfo.from_path(directory)
         # cleanup
         rmdir(directory)
         # no container
         assert not directory.exists()
         FileOperations().make_dir(directory,make_parents=True, permissions=permissions)
         assert directory.exists()
-        info_dir = _fileinfo_from_path(directory)
+        info_dir = _fileinfo.from_path(directory)
         # cleanup -- pytest is bad at cleaning up when permissions are funky
         rmdir(directory)
         # comparison
@@ -342,8 +342,8 @@ class TestMakeDir:
         FileOperations(container).make_dir(subdirectory,make_parents=True, permissions=permissions)
         assert directory.exists()
         assert subdirectory.exists()
-        info_sub_c = _fileinfo_from_path(subdirectory)
-        info_dir_c = _fileinfo_from_path(directory)
+        info_sub_c = _fileinfo.from_path(subdirectory)
+        info_dir_c = _fileinfo.from_path(directory)
         # cleanup
         rmdir(subdirectory)
         rmdir(directory)
@@ -353,8 +353,8 @@ class TestMakeDir:
         FileOperations().make_dir(subdirectory,make_parents=True, permissions=permissions)
         assert directory.exists()
         assert subdirectory.exists()
-        info_sub = _fileinfo_from_path(subdirectory)
-        info_dir = _fileinfo_from_path(directory)
+        info_sub = _fileinfo.from_path(subdirectory)
+        info_dir = _fileinfo.from_path(directory)
         # cleanup -- pytest is bad at cleaning up when permissions are funky
         rmdir(subdirectory)
         rmdir(directory)
@@ -388,7 +388,7 @@ class TestMakeDir:
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert directory.exists()
-        info_dir_c = _fileinfo_from_path(directory)
+        info_dir_c = _fileinfo.from_path(directory)
         os.chmod(directory, 0o755)
         assert not subdirectory.exists()
         # cleanup
@@ -401,7 +401,7 @@ class TestMakeDir:
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert directory.exists()
-        info_dir = _fileinfo_from_path(directory)
+        info_dir = _fileinfo.from_path(directory)
         os.chmod(directory, 0o755)
         assert not subdirectory.exists()
         # cleanup -- pytest is bad at cleaning up when permissions are funky
@@ -433,8 +433,8 @@ class TestMakeDir:
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert directory.exists()
-        info_dir_c = _fileinfo_from_path(directory)
-        info_subdir_c = _fileinfo_from_path(subdirectory)
+        info_dir_c = _fileinfo.from_path(directory)
+        info_subdir_c = _fileinfo.from_path(subdirectory)
         os.chmod(directory, 0o755)
         assert subdirectory.exists()
         # cleanup
@@ -448,8 +448,8 @@ class TestMakeDir:
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert directory.exists()
-        info_dir = _fileinfo_from_path(directory)
-        info_subdir = _fileinfo_from_path(subdirectory)
+        info_dir = _fileinfo.from_path(directory)
+        info_subdir = _fileinfo.from_path(subdirectory)
         os.chmod(directory, 0o755)
         assert subdirectory.exists()
         # cleanup -- pytest is bad at cleaning up when permissions are funky
@@ -487,10 +487,10 @@ class TestMakeDir:
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert directory.exists()
-        info_dir_c = _fileinfo_from_path(directory)
+        info_dir_c = _fileinfo.from_path(directory)
         os.chmod(directory, 0o755)
         assert subdirectory.exists()
-        info_subdir_c = _fileinfo_from_path(subdirectory)
+        info_subdir_c = _fileinfo.from_path(subdirectory)
         assert not subsubdirectory.exists()
         # cleanup
         rmdir(subdirectory)
@@ -504,10 +504,10 @@ class TestMakeDir:
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert directory.exists()
-        info_dir = _fileinfo_from_path(directory)
+        info_dir = _fileinfo.from_path(directory)
         os.chmod(directory, 0o755)
         assert subdirectory.exists()
-        info_subdir = _fileinfo_from_path(subdirectory)
+        info_subdir = _fileinfo.from_path(subdirectory)
         assert not subsubdirectory.exists()
         # cleanup -- pytest is bad at cleaning up when permissions are funky
         rmdir(subdirectory)
@@ -564,9 +564,9 @@ class TestMakeDir:
         subdirectory.mkdir(parents=True)
         # with container
         FileOperations(container).make_dir(subdirectory, make_parents=True, permissions=permissions)
-        info_dir_c = _fileinfo_from_path(directory)
+        info_dir_c = _fileinfo.from_path(directory)
         os.chmod(directory, 0o755)  # so we can read the subdirectory info
-        info_subdir_c = _fileinfo_from_path(subdirectory)
+        info_subdir_c = _fileinfo.from_path(subdirectory)
         # cleanup
         rmdir(subdirectory)
         rmdir(directory)
@@ -574,9 +574,9 @@ class TestMakeDir:
         subdirectory.mkdir(parents=True)
         # without container
         FileOperations().make_dir(subdirectory, make_parents=True, permissions=permissions)
-        info_dir = _fileinfo_from_path(directory)
+        info_dir = _fileinfo.from_path(directory)
         os.chmod(directory, 0o755)  # so we can read the subdirectory info
-        info_subdir = _fileinfo_from_path(subdirectory)
+        info_subdir = _fileinfo.from_path(subdirectory)
         # cleanup -- pytest is bad at cleaning up when permissions are funky
         rmdir(subdirectory)
         rmdir(directory)
@@ -928,9 +928,9 @@ class TestPush:
         assert directory.exists()
         assert subdirectory.exists()
         assert path.exists()
-        info_pat_c = _fileinfo_from_path(path)
-        info_sub_c = _fileinfo_from_path(subdirectory)
-        info_dir_c = _fileinfo_from_path(directory)
+        info_pat_c = _fileinfo.from_path(path)
+        info_sub_c = _fileinfo.from_path(subdirectory)
+        info_dir_c = _fileinfo.from_path(directory)
         os.chmod(path, 0o400)
         assert path.read_text() == contents
         # cleanup
@@ -945,9 +945,9 @@ class TestPush:
         assert directory.exists()
         assert subdirectory.exists()
         assert path.exists()
-        info_pat = _fileinfo_from_path(path)
-        info_sub = _fileinfo_from_path(subdirectory)
-        info_dir = _fileinfo_from_path(directory)
+        info_pat = _fileinfo.from_path(path)
+        info_sub = _fileinfo.from_path(subdirectory)
+        info_dir = _fileinfo.from_path(directory)
         os.chmod(path, 0o400)
         assert path.read_text() == contents
         # cleanup -- pytest is bad at cleaning up when permissions are funky

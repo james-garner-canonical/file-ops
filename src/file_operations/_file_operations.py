@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import datetime
 import fnmatch
 import grp
 import io
@@ -8,7 +7,6 @@ import os
 import pwd
 import re
 import shutil
-import stat
 import types
 from contextlib import AbstractContextManager
 from pathlib import Path, PurePath
@@ -17,6 +15,7 @@ from typing import BinaryIO, Callable, Iterable, Protocol, TextIO, Union, cast, 
 import ops
 
 from . import _errors
+from . import _fileinfo
 
 
 class FileOperations:
@@ -65,7 +64,7 @@ class FileOperations:
                     path=path, message=f'syntax error in pattern "{pattern}"'
                 )
             paths = [p for p in paths if fnmatch.fnmatch(str(p.name), pattern)]
-        return [_fileinfo_from_path(p) for p in paths]
+        return [_fileinfo.from_path(p) for p in paths]
 
     def make_dir(
         self,
@@ -453,37 +452,6 @@ class _ChownContext(AbstractContextManager['_ChownContext', None]):
             shutil.chown(path, user=user)
         elif group is not None:
             shutil.chown(path, group=group)
-
-
-def _fileinfo_from_path(path: Path) -> ops.pebble.FileInfo:
-    stat_result = path.lstat()  # lstat because pebble doesn't follow symlinks
-    utcoffset = datetime.datetime.now().astimezone().utcoffset()
-    timezone = datetime.timezone(utcoffset) if utcoffset is not None else datetime.timezone.utc
-    filetype = _FT_MAP.get(stat.S_IFMT(stat_result.st_mode), ops.pebble.FileType.UNKNOWN)
-    size = stat_result.st_size if filetype is ops.pebble.FileType.FILE else None
-    return ops.pebble.FileInfo(
-        path=str(path),
-        name=path.name,
-        type=filetype,
-        size=size,
-        permissions=stat.S_IMODE(stat_result.st_mode),
-        last_modified=datetime.datetime.fromtimestamp(int(stat_result.st_mtime), tz=timezone),
-        user_id=stat_result.st_uid,
-        user=pwd.getpwuid(stat_result.st_uid).pw_name,
-        group_id=stat_result.st_gid,
-        group=grp.getgrgid(stat_result.st_gid).gr_name,
-    )
-
-
-_FT_MAP: dict[int, ops.pebble.FileType] = {
-    stat.S_IFREG: ops.pebble.FileType.FILE,
-    stat.S_IFDIR: ops.pebble.FileType.DIRECTORY,
-    stat.S_IFLNK: ops.pebble.FileType.SYMLINK,
-    stat.S_IFSOCK: ops.pebble.FileType.SOCKET,
-    stat.S_IFIFO: ops.pebble.FileType.NAMED_PIPE,
-    stat.S_IFBLK: ops.pebble.FileType.DEVICE,  # block device
-    stat.S_IFCHR: ops.pebble.FileType.DEVICE,  # character device
-}
 
 
 def _make_dir(
