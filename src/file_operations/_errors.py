@@ -3,7 +3,13 @@ from __future__ import annotations
 import os
 from pathlib import PurePath
 
+import ops
 from ops import pebble
+
+
+##########
+# pebble #
+##########
 
 
 class API:
@@ -140,3 +146,20 @@ class Path:
                     # these also have kind 'generic-file-error'
                 )
             )
+
+
+##########
+# ops #
+##########
+
+
+class Ops:
+    class MultiPush:
+        @staticmethod
+        def from_errors(errors: list[tuple[str, Exception]]) -> ops.MultiPushPullError:
+            return ops.MultiPushPullError('failed to push one or more files', errors)
+
+    class MultiPull:
+        @staticmethod
+        def from_errors(errors: list[tuple[str, Exception]]) -> ops.MultiPushPullError:
+            return ops.MultiPushPullError('failed to pull one or more files', errors)

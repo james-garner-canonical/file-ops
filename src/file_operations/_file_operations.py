@@ -115,16 +115,19 @@ class FileOperations:
             source_paths = cast(Iterable[Union[str, Path]], [source_path])
         source_paths = [Path(p) for p in source_paths]
         dest_dir = Path(dest_dir)
-        if not dest_dir.is_absolute():
-            raise _errors.Path.RelativePath.from_path(path=dest_dir)
+        try:
+            self.make_dir(dest_dir, make_parents=True)
+        except Exception as e:
+            raise _errors.Ops.MultiPush.from_errors([(str(dest_dir), e)])
         errors: list[tuple[str, Exception]] = []
         for path in source_paths:
             try:
                 _copy(source=path, dest=dest_dir)
-            except (OSError, ops.pebble.Error) as e:
+            except OSError as e:
+                # do we need to translate these errors into pebble errors?
                 errors.append((str(path), e))
         if errors:
-            raise ops.model.MultiPushPullError('failed to push one or more files', errors)
+            raise _errors.Ops.MultiPush.from_errors(errors)
 
     def pull_path(
         self,
@@ -144,12 +147,14 @@ class FileOperations:
         for path in source_paths:
             try:
                 if not path.is_absolute():
-                    raise _errors.Path.RelativePath.from_path(path=path)
+                    errors.append((str(path), _errors.Path.RelativePath.from_path(path=path)))
+                    continue
                 _copy(source=path, dest=dest_dir)
-            except (OSError, ops.pebble.Error) as e:
+            except OSError as e:
+                # do we need to translate these errors into pebble errors?
                 errors.append((str(path), e))
         if errors:
-            raise ops.model.MultiPushPullError('failed to pull one or more files', errors)
+            raise _errors.Ops.MultiPull.from_errors(errors)
 
     def remove_path(self, path: str | PurePath, *, recursive: bool = False) -> None:
         if self._container is not None:
@@ -563,7 +568,7 @@ def _write_chunked(path: Path, source_io: BinaryIO | TextIO, chunk_size: int, en
             content = source_io.read(chunk_size)
 
 
-def _copy(source: Path, dest: Path):
+def _copy(source: Path, dest: Path) -> None:
     assert dest.is_dir()
     if source.is_dir():
         shutil.copytree(src=source, dst=dest)
