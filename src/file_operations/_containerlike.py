@@ -8,6 +8,7 @@ import pwd
 import re
 import shutil
 import types
+import typing
 from contextlib import AbstractContextManager
 from pathlib import Path, PurePath
 from typing import (
@@ -15,7 +16,6 @@ from typing import (
     BinaryIO,
     Callable,
     Iterable,
-    Protocol,
     TextIO,
     Union,
     cast,
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     import ops
 
 
-class FileOperations:
+class Local:
     _chunk_size = io.DEFAULT_BUFFER_SIZE
     # 8192 on my machine, which ops.pebble.Client._chunk_size hard codes
 
@@ -273,7 +273,7 @@ class FileOperations:
         return cast('Union[TextIO, BinaryIO]', f)
 
 
-class _FileOperationsProtocol(Protocol):
+class Protocol(typing.Protocol):
     def exists(self, path: str | PurePath) -> bool:
         ...
 
@@ -560,7 +560,7 @@ def _copy(source: Path, dest: Path) -> None:
 
 # type checking
 def _type_check(_container: ops.Container):  # pyright: ignore[reportUnusedFunction]
-    _f: _FileOperationsProtocol
-    _f = FileOperations()
-    _f = FileOperations(_container)
+    _f: Protocol
+    _f = Local()
+    _f = Local(_container)
     _f = _container

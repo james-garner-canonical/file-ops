@@ -11,8 +11,9 @@ from typing import Iterator
 
 import ops
 import pytest
-from file_operations import FileOperations, _errors
+from file_operations import _errors
 from file_operations import _fileinfo
+from file_operations import Local
 
 
 DEBUG: bool = True
@@ -114,8 +115,8 @@ def interesting_dir(tmp_path: pathlib.Path, text_files: dict[str, str]) -> Itera
 class TestListFiles:
     @staticmethod
     def test_ok(container: ops.Container, interesting_dir: pathlib.Path):
-        with_container = FileOperations(container).list_files(interesting_dir)
-        without_container = FileOperations().list_files(interesting_dir)
+        with_container = Local(container).list_files(interesting_dir)
+        without_container = Local().list_files(interesting_dir)
         with_container.sort(key=lambda fileinfo: fileinfo.name)
         without_container.sort(key=lambda fileinfo: fileinfo.name)
         write_for_debugging(
@@ -147,8 +148,8 @@ class TestListFiles:
         ],
     )
     def test_pattern_ok(container: ops.Container, interesting_dir: pathlib.Path, pattern: str):
-        with_container = FileOperations(container).list_files(interesting_dir, pattern=pattern)
-        without_container = FileOperations().list_files(interesting_dir, pattern=pattern)
+        with_container = Local(container).list_files(interesting_dir, pattern=pattern)
+        without_container = Local().list_files(interesting_dir, pattern=pattern)
         with_container.sort(key=lambda fileinfo: fileinfo.name)
         without_container.sort(key=lambda fileinfo: fileinfo.name)
         write_for_debugging(
@@ -162,8 +163,8 @@ class TestListFiles:
     @staticmethod
     def test_pattern_ok_text_files(container: ops.Container, interesting_dir: pathlib.Path, text_files: dict[str, str]):
         pattern = '*.txt'
-        with_container = FileOperations(container).list_files(interesting_dir, pattern=pattern)
-        without_container = FileOperations().list_files(interesting_dir, pattern=pattern)
+        with_container = Local(container).list_files(interesting_dir, pattern=pattern)
+        without_container = Local().list_files(interesting_dir, pattern=pattern)
         with_container.sort(key=lambda fileinfo: fileinfo.name)
         without_container.sort(key=lambda fileinfo: fileinfo.name)
         with unittest.mock.patch.object(ops.pebble.FileInfo, '__eq__', fileinfo_eq):
@@ -174,8 +175,8 @@ class TestListFiles:
     @staticmethod
     def test_pattern_ok_no_match(container: ops.Container, interesting_dir: pathlib.Path):
         pattern = '*.nomatches'
-        with_container = FileOperations(container).list_files(interesting_dir, pattern=pattern)
-        without_container = FileOperations().list_files(interesting_dir, pattern=pattern)
+        with_container = Local(container).list_files(interesting_dir, pattern=pattern)
+        without_container = Local().list_files(interesting_dir, pattern=pattern)
         with_container.sort(key=lambda fileinfo: fileinfo.name)
         without_container.sort(key=lambda fileinfo: fileinfo.name)
         with unittest.mock.patch.object(ops.pebble.FileInfo, '__eq__', fileinfo_eq):
@@ -187,19 +188,19 @@ class TestListFiles:
     def test_given_bad_pattern_when_list_files_then_api_error(container: ops.Container, interesting_dir: pathlib.Path):
         pattern = '[foo'
         with pytest.raises(ops.pebble.APIError) as exception_context:
-            FileOperations(container).list_files(interesting_dir, pattern=pattern)
+            Local(container).list_files(interesting_dir, pattern=pattern)
         print(exception_context.value)
         assert _errors.API.BadRequest.matches(exception_context.value)
         with pytest.raises(ops.pebble.APIError) as exception_context:
-            FileOperations().list_files(interesting_dir, pattern=pattern)
+            Local().list_files(interesting_dir, pattern=pattern)
         print(exception_context.value)
         assert _errors.API.BadRequest.matches(exception_context.value)
 
     @staticmethod
     def test_bad_pattern_empty_dir(container: ops.Container, tmp_path: pathlib.Path):
         pattern = '[foo'
-        with_container = FileOperations(container).list_files(tmp_path, pattern=pattern)
-        without_container = FileOperations().list_files(tmp_path, pattern=pattern)
+        with_container = Local(container).list_files(tmp_path, pattern=pattern)
+        without_container = Local().list_files(tmp_path, pattern=pattern)
         with_container.sort(key=lambda fileinfo: fileinfo.name)
         without_container.sort(key=lambda fileinfo: fileinfo.name)
         with unittest.mock.patch.object(ops.pebble.FileInfo, '__eq__', fileinfo_eq):
@@ -207,8 +208,8 @@ class TestListFiles:
 
     @staticmethod
     def test_itself_ok(container: ops.Container, interesting_dir: pathlib.Path):
-        with_container = FileOperations(container).list_files(interesting_dir, itself=True)
-        without_container = FileOperations().list_files(interesting_dir, itself=True)
+        with_container = Local(container).list_files(interesting_dir, itself=True)
+        without_container = Local().list_files(interesting_dir, itself=True)
         with_container.sort(key=lambda fileinfo: fileinfo.name)
         without_container.sort(key=lambda fileinfo: fileinfo.name)
         with unittest.mock.patch.object(ops.pebble.FileInfo, '__eq__', fileinfo_eq):
@@ -217,8 +218,8 @@ class TestListFiles:
     @staticmethod
     def test_itself_pattern_ok(container: ops.Container, interesting_dir: pathlib.Path):
         pattern = '*'
-        with_container = FileOperations(container).list_files(interesting_dir, pattern=pattern)
-        without_container = FileOperations().list_files(interesting_dir, pattern=pattern)
+        with_container = Local(container).list_files(interesting_dir, pattern=pattern)
+        without_container = Local().list_files(interesting_dir, pattern=pattern)
         with_container.sort(key=lambda fileinfo: fileinfo.name)
         without_container.sort(key=lambda fileinfo: fileinfo.name)
         write_for_debugging(
@@ -232,8 +233,8 @@ class TestListFiles:
     @staticmethod
     def test_itself_pattern_no_matches(container: ops.Container, interesting_dir: pathlib.Path):
         pattern = '*.nomatches'
-        with_container = FileOperations(container).list_files(interesting_dir, pattern=pattern)
-        without_container = FileOperations().list_files(interesting_dir, pattern=pattern)
+        with_container = Local(container).list_files(interesting_dir, pattern=pattern)
+        without_container = Local().list_files(interesting_dir, pattern=pattern)
         with_container.sort(key=lambda fileinfo: fileinfo.name)
         without_container.sort(key=lambda fileinfo: fileinfo.name)
         write_for_debugging(
@@ -248,11 +249,11 @@ class TestListFiles:
     def test_given_bad_pattern_when_list_files_with_itself_then_api_error(container: ops.Container, interesting_dir: pathlib.Path):
         pattern = '[foo'
         with pytest.raises(ops.pebble.APIError) as exception_context:
-            FileOperations(container).list_files(interesting_dir, pattern=pattern, itself=True)
+            Local(container).list_files(interesting_dir, pattern=pattern, itself=True)
         print(exception_context.value)
         assert _errors.API.BadRequest.matches(exception_context.value)
         with pytest.raises(ops.pebble.APIError) as exception_context:
-            FileOperations().list_files(interesting_dir, pattern=pattern, itself=True)
+            Local().list_files(interesting_dir, pattern=pattern, itself=True)
         print(exception_context.value)
         assert _errors.API.BadRequest.matches(exception_context.value)
 
@@ -261,12 +262,12 @@ class TestListFiles:
         path = (tmp_path / 'does/not/exist/')
         # with container
         with pytest.raises(ops.pebble.APIError) as exception_context:
-            FileOperations(container).list_files(path)
+            Local(container).list_files(path)
         print(exception_context.value)
         assert _errors.API.FileNotFound.matches(exception_context.value)
         # without container
         with pytest.raises(ops.pebble.APIError) as exception_context:
-            FileOperations().list_files(path)
+            Local().list_files(path)
         print(exception_context.value)
         assert _errors.API.FileNotFound.matches(exception_context.value)
 
@@ -279,10 +280,10 @@ class TestMakeDir:
     @staticmethod
     def test_ok(container: ops.Container, tmp_path: pathlib.Path):
         directory = tmp_path / 'directory'
-        FileOperations(container).make_dir(directory)
+        Local(container).make_dir(directory)
         assert directory.exists()
         rmdir(directory)
-        FileOperations().make_dir(directory)
+        Local().make_dir(directory)
         assert directory.exists()
         rmdir(directory)
 
@@ -292,12 +293,12 @@ class TestMakeDir:
         pathlib.Path(directory).mkdir(exist_ok=True, parents=True)
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).make_dir(directory)
+            Local(container).make_dir(directory)
         print(exception_context.value)
         assert _errors.Path.FileExists.matches(exception_context.value)
         # without container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().make_dir(directory)
+            Local().make_dir(directory)
         print(exception_context.value)
         assert _errors.Path.FileExists.matches(exception_context.value)
 
@@ -308,14 +309,14 @@ class TestMakeDir:
         directory = tmp_path / 'directory'
         # container
         assert not directory.exists()
-        FileOperations(container).make_dir(directory,make_parents=True, permissions=permissions)
+        Local(container).make_dir(directory,make_parents=True, permissions=permissions)
         assert directory.exists()
         info_dir_c = _fileinfo.from_path(directory)
         # cleanup
         rmdir(directory)
         # no container
         assert not directory.exists()
-        FileOperations().make_dir(directory,make_parents=True, permissions=permissions)
+        Local().make_dir(directory,make_parents=True, permissions=permissions)
         assert directory.exists()
         info_dir = _fileinfo.from_path(directory)
         # cleanup -- pytest is bad at cleaning up when permissions are funky
@@ -337,7 +338,7 @@ class TestMakeDir:
         # container
         assert not subdirectory.exists()
         assert not directory.exists()
-        FileOperations(container).make_dir(subdirectory,make_parents=True, permissions=permissions)
+        Local(container).make_dir(subdirectory,make_parents=True, permissions=permissions)
         assert directory.exists()
         assert subdirectory.exists()
         info_sub_c = _fileinfo.from_path(subdirectory)
@@ -348,7 +349,7 @@ class TestMakeDir:
         # no container
         assert not subdirectory.exists()
         assert not directory.exists()
-        FileOperations().make_dir(subdirectory,make_parents=True, permissions=permissions)
+        Local().make_dir(subdirectory,make_parents=True, permissions=permissions)
         assert directory.exists()
         assert subdirectory.exists()
         info_sub = _fileinfo.from_path(subdirectory)
@@ -382,7 +383,7 @@ class TestMakeDir:
         assert not subdirectory.exists()
         assert not directory.exists()
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).make_dir(subdirectory,make_parents=True, permissions=permissions)
+            Local(container).make_dir(subdirectory,make_parents=True, permissions=permissions)
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert directory.exists()
@@ -395,7 +396,7 @@ class TestMakeDir:
         assert not subdirectory.exists()
         assert not directory.exists()
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().make_dir(subdirectory,make_parents=True, permissions=permissions)
+            Local().make_dir(subdirectory,make_parents=True, permissions=permissions)
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert directory.exists()
@@ -427,7 +428,7 @@ class TestMakeDir:
         assert not subdirectory.exists()
         assert not directory.exists()
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).make_dir(subdirectory,make_parents=True, permissions=permissions)
+            Local(container).make_dir(subdirectory,make_parents=True, permissions=permissions)
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert directory.exists()
@@ -442,7 +443,7 @@ class TestMakeDir:
         assert not subdirectory.exists()
         assert not directory.exists()
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().make_dir(subdirectory,make_parents=True, permissions=permissions)
+            Local().make_dir(subdirectory,make_parents=True, permissions=permissions)
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert directory.exists()
@@ -481,7 +482,7 @@ class TestMakeDir:
         assert not subdirectory.exists()
         assert not directory.exists()
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).make_dir(subdirectory,make_parents=True, permissions=permissions)
+            Local(container).make_dir(subdirectory,make_parents=True, permissions=permissions)
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert directory.exists()
@@ -498,7 +499,7 @@ class TestMakeDir:
         assert not subdirectory.exists()
         assert not directory.exists()
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().make_dir(subdirectory,make_parents=True, permissions=permissions)
+            Local().make_dir(subdirectory,make_parents=True, permissions=permissions)
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert directory.exists()
@@ -527,14 +528,14 @@ class TestMakeDir:
         subdirectory = directory / 'subdirectory'
         # container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).make_dir(subdirectory)
+            Local(container).make_dir(subdirectory)
         print(exception_context.value)
         assert _errors.Path.FileNotFound.matches(exception_context.value)
         assert not subdirectory.exists()
         assert not directory.exists()
         # no container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().make_dir(subdirectory)
+            Local().make_dir(subdirectory)
         print(exception_context.value)
         assert _errors.Path.FileNotFound.matches(exception_context.value)
         assert not subdirectory.exists()
@@ -546,9 +547,9 @@ class TestMakeDir:
         subdirectory = directory / 'subdirectory'
         subdirectory.mkdir(parents=True)
         # with container
-        FileOperations(container).make_dir(subdirectory, make_parents=True)
+        Local(container).make_dir(subdirectory, make_parents=True)
         # without container
-        FileOperations().make_dir(subdirectory, make_parents=True)
+        Local().make_dir(subdirectory, make_parents=True)
 
     @staticmethod
     @pytest.mark.parametrize('mode', GOOD_PARENT_DIRECTORY_MODES)
@@ -561,7 +562,7 @@ class TestMakeDir:
         # setup
         subdirectory.mkdir(parents=True)
         # with container
-        FileOperations(container).make_dir(subdirectory, make_parents=True, permissions=permissions)
+        Local(container).make_dir(subdirectory, make_parents=True, permissions=permissions)
         info_dir_c = _fileinfo.from_path(directory)
         os.chmod(directory, 0o755)  # so we can read the subdirectory info
         info_subdir_c = _fileinfo.from_path(subdirectory)
@@ -571,7 +572,7 @@ class TestMakeDir:
         # setup
         subdirectory.mkdir(parents=True)
         # without container
-        FileOperations().make_dir(subdirectory, make_parents=True, permissions=permissions)
+        Local().make_dir(subdirectory, make_parents=True, permissions=permissions)
         info_dir = _fileinfo.from_path(directory)
         os.chmod(directory, 0o755)  # so we can read the subdirectory info
         info_subdir = _fileinfo.from_path(subdirectory)
@@ -596,12 +597,12 @@ class TestMakeDir:
         subdirectory.mkdir(parents=True)
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).make_dir(subdirectory)
+            Local(container).make_dir(subdirectory)
         assert _errors.Path.FileExists.matches(exception_context.value)
         print(exception_context.value)
         # without container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().make_dir(subdirectory)
+            Local().make_dir(subdirectory)
         assert _errors.Path.FileExists.matches(exception_context.value)
         print(exception_context.value)
 
@@ -609,10 +610,10 @@ class TestMakeDir:
     def test_path_not_absolute(container: ops.Container):
         path = pathlib.Path('path.test')
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).make_dir(path)
+            Local(container).make_dir(path)
         assert _errors.Path.RelativePath.matches(exception_context.value)
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().make_dir(path)
+            Local().make_dir(path)
         assert _errors.Path.RelativePath.matches(exception_context.value)
 
     @staticmethod
@@ -623,13 +624,13 @@ class TestMakeDir:
         directory = tmp_path / 'directory'
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).make_dir(directory, user=user_name, user_id=user_id)
+            Local(container).make_dir(directory, user=user_name, user_id=user_id)
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert not pathlib.Path(directory).exists()
         # without container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().make_dir(directory, user=user_name, user_id=user_id)
+            Local().make_dir(directory, user=user_name, user_id=user_id)
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert not pathlib.Path(directory).exists()
@@ -641,13 +642,13 @@ class TestMakeDir:
         user_name = 'fake_user'
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).make_dir(directory, user=user_name)
+            Local(container).make_dir(directory, user=user_name)
         print(exception_context.value)
         assert _errors.Path.Lookup.matches(exception_context.value)
         assert not pathlib.Path(directory).exists()
         # without container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().make_dir(directory, user=user_name)
+            Local().make_dir(directory, user=user_name)
         print(exception_context.value)
         assert _errors.Path.Lookup.matches(exception_context.value)
         assert not pathlib.Path(directory).exists()
@@ -657,13 +658,13 @@ class TestMakeDir:
         directory = tmp_path / 'directory'
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).make_dir(directory, user_id=9000, group_id=9001)
+            Local(container).make_dir(directory, user_id=9000, group_id=9001)
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert not pathlib.Path(directory).exists()
         # without container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().make_dir(directory, user_id=9000, group_id=9001)
+            Local().make_dir(directory, user_id=9000, group_id=9001)
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert not pathlib.Path(directory).exists()
@@ -674,11 +675,11 @@ class TestMakeDir:
         # TODO: user that exists
         user_name = 'user'
         # with container
-        FileOperations(container).make_dir(directory, user=user_name)
+        Local(container).make_dir(directory, user=user_name)
         assert directory.exists()
         rmdir(directory)
         # without container
-        FileOperations().make_dir(directory, user=user_name)
+        Local().make_dir(directory, user=user_name)
         assert directory.exists()
         rmdir(directory)
 
@@ -689,12 +690,12 @@ class TestMakeDir:
         user_id = 1000
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).make_dir(directory, user_id=user_id)
+            Local(container).make_dir(directory, user_id=user_id)
         assert not directory.exists()
         assert _errors.Path.Generic.matches(exception_context.value)
         # without container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().make_dir(directory, user_id=user_id)
+            Local().make_dir(directory, user_id=user_id)
         assert not directory.exists()
         assert _errors.Path.Generic.matches(exception_context.value)
 
@@ -705,12 +706,12 @@ class TestMakeDir:
         group = 'user'
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).make_dir(directory, group=group)
+            Local(container).make_dir(directory, group=group)
         assert not directory.exists()
         assert _errors.Path.Generic.matches(exception_context.value)
         # without container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().make_dir(directory, group=group)
+            Local().make_dir(directory, group=group)
         assert not directory.exists()
         assert _errors.Path.Generic.matches(exception_context.value)
 
@@ -721,12 +722,12 @@ class TestMakeDir:
         group_id = 1000
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).make_dir(directory, group_id=group_id)
+            Local(container).make_dir(directory, group_id=group_id)
         assert not directory.exists()
         assert _errors.Path.Generic.matches(exception_context.value)
         # without container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().make_dir(directory, group_id=group_id)
+            Local().make_dir(directory, group_id=group_id)
         assert not directory.exists()
         assert _errors.Path.Generic.matches(exception_context.value)
 
@@ -738,12 +739,12 @@ class TestMakeDir:
         group_id = 1000
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).make_dir(directory, group=group, group_id=group_id)
+            Local(container).make_dir(directory, group=group, group_id=group_id)
         assert not directory.exists()
         assert _errors.Path.Generic.matches(exception_context.value)
         # without container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().make_dir(directory, group=group, group_id=group_id)
+            Local().make_dir(directory, group=group, group_id=group_id)
         assert not directory.exists()
         assert _errors.Path.Generic.matches(exception_context.value)
 
@@ -756,13 +757,13 @@ class TestMakeDir:
         user_name = 'user'
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).make_dir(directory, user=user_name, user_id=user_id)
+            Local(container).make_dir(directory, user=user_name, user_id=user_id)
         print(exception_context.value)
         assert _errors.Path.Generic.matches(exception_context.value)
         assert not pathlib.Path(directory).exists()
         # without container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().make_dir(directory, user=user_name, user_id=user_id)
+            Local().make_dir(directory, user=user_name, user_id=user_id)
         print(exception_context.value)
         assert _errors.Path.Generic.matches(exception_context.value)
         assert not pathlib.Path(directory).exists()
@@ -775,13 +776,13 @@ class TestMakeDir:
         directory = tmp_path / 'directory'
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).make_dir(directory, user=user_name, user_id=user_id)
+            Local(container).make_dir(directory, user=user_name, user_id=user_id)
         print(exception_context.value)
         assert _errors.Path.Lookup.matches(exception_context.value)
         assert not pathlib.Path(directory).exists()
         # without container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().make_dir(directory, user=user_name, user_id=user_id)
+            Local().make_dir(directory, user=user_name, user_id=user_id)
         print(exception_context.value)
         assert _errors.Path.Lookup.matches(exception_context.value)
         assert not pathlib.Path(directory).exists()
@@ -797,12 +798,12 @@ class TestRemovePath:
         file = tmp_path / 'doesnt_exist'
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).remove_path(file)
+            Local(container).remove_path(file)
         print(exception_context.value)
         assert _errors.Path.FileNotFound.matches(exception_context.value)
         # without container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().remove_path(file)
+            Local().remove_path(file)
         print(exception_context.value)
         assert _errors.Path.FileNotFound.matches(exception_context.value)
 
@@ -811,12 +812,12 @@ class TestRemovePath:
         file = tmp_path / 'does/not/exist'
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).remove_path(file)
+            Local(container).remove_path(file)
         print(exception_context.value)
         assert _errors.Path.FileNotFound.matches(exception_context.value)
         # without container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().remove_path(file)
+            Local().remove_path(file)
         print(exception_context.value)
         assert _errors.Path.FileNotFound.matches(exception_context.value)
 
@@ -824,10 +825,10 @@ class TestRemovePath:
     def test_path_not_absolute(container: ops.Container):
         path = pathlib.Path('path.test')
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).remove_path(path)
+            Local(container).remove_path(path)
         assert _errors.Path.RelativePath.matches(exception_context.value)
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().remove_path(path)
+            Local().remove_path(path)
         assert _errors.Path.RelativePath.matches(exception_context.value)
 
 
@@ -842,12 +843,12 @@ class TestPush:
         contents = 'hello world'
         # container
         assert not path.exists()
-        FileOperations(container).push(path=path, source=contents)
+        Local(container).push(path=path, source=contents)
         assert path.read_text() == contents
         path.unlink()
         # no container
         assert not path.exists()
-        FileOperations().push(path=path, source=contents)
+        Local().push(path=path, source=contents)
         assert path.read_text() == contents
 
     @staticmethod
@@ -856,12 +857,12 @@ class TestPush:
         contents = b'hello world'
         # container
         assert not path.exists()
-        FileOperations(container).push(path=path, source=contents)
+        Local(container).push(path=path, source=contents)
         assert path.read_bytes() == contents
         path.unlink()
         # no container
         assert not path.exists()
-        FileOperations().push(path=path, source=contents)
+        Local().push(path=path, source=contents)
         assert path.read_bytes() == contents
 
     @staticmethod
@@ -873,13 +874,13 @@ class TestPush:
         # container
         assert not path.exists()
         with source.open() as f:
-            FileOperations(container).push(path=path, source=f)
+            Local(container).push(path=path, source=f)
         assert path.read_text() == contents
         path.unlink()
         # no container
         assert not path.exists()
         with source.open() as f:
-            FileOperations().push(path=path, source=f)
+            Local().push(path=path, source=f)
         assert path.read_text() == contents
 
     @staticmethod
@@ -891,23 +892,23 @@ class TestPush:
         # container
         assert not path.exists()
         with source.open('rb') as f:
-            FileOperations(container).push(path=path, source=f)
+            Local(container).push(path=path, source=f)
         assert path.read_bytes() == contents
         path.unlink()
         # no container
         assert not path.exists()
         with source.open('rb') as f:
-            FileOperations().push(path=path, source=f)
+            Local().push(path=path, source=f)
         assert path.read_bytes() == contents
 
     @staticmethod
     def test_path_not_absolute(container: ops.Container):
         path = pathlib.Path('path.test')
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).push(path, source='')
+            Local(container).push(path, source='')
         assert _errors.Path.RelativePath.matches(exception_context.value)
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().push(path, source='')
+            Local().push(path, source='')
         assert _errors.Path.RelativePath.matches(exception_context.value)
 
     @staticmethod
@@ -922,7 +923,7 @@ class TestPush:
         assert not path.exists()
         assert not subdirectory.exists()
         assert not directory.exists()
-        FileOperations(container).push(path=path, source=contents, make_dirs=True, permissions=permissions)
+        Local(container).push(path=path, source=contents, make_dirs=True, permissions=permissions)
         assert directory.exists()
         assert subdirectory.exists()
         assert path.exists()
@@ -939,7 +940,7 @@ class TestPush:
         assert not path.exists()
         assert not subdirectory.exists()
         assert not directory.exists()
-        FileOperations().push(path=path, source=contents, make_dirs=True, permissions=permissions)
+        Local().push(path=path, source=contents, make_dirs=True, permissions=permissions)
         assert directory.exists()
         assert subdirectory.exists()
         assert path.exists()
@@ -974,7 +975,7 @@ class TestPush:
         contents = 'hello world'
         # container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).push(path=path, source=contents)
+            Local(container).push(path=path, source=contents)
         print(exception_context.value)
         assert _errors.Path.FileNotFound.matches(exception_context.value)
         assert not path.exists()
@@ -982,7 +983,7 @@ class TestPush:
         assert not directory.exists()
         # no container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().make_dir(subdirectory)
+            Local().make_dir(subdirectory)
         print(exception_context.value)
         assert _errors.Path.FileNotFound.matches(exception_context.value)
         assert not path.exists()
@@ -1001,10 +1002,10 @@ class TestPull:
         contents = 'hello world'
         path.write_text(contents)
         # container
-        f = FileOperations(container).pull(path)
+        f = Local(container).pull(path)
         assert f.read() == contents
         # no container
-        f = FileOperations().pull(path)
+        f = Local().pull(path)
         assert f.read() == contents
 
     @staticmethod
@@ -1013,10 +1014,10 @@ class TestPull:
         contents = b'hello world'
         path.write_bytes(contents)
         # container
-        f = FileOperations(container).pull(path, encoding=None)
+        f = Local(container).pull(path, encoding=None)
         assert f.read() == contents
         # no container
-        f = FileOperations().pull(path, encoding=None)
+        f = Local().pull(path, encoding=None)
         assert f.read() == contents
 
     @staticmethod
@@ -1026,10 +1027,10 @@ class TestPull:
         path.write_text(contents)
         # container
         with pytest.raises(LookupError):
-            FileOperations(container).pull(path, encoding='bad')
+            Local(container).pull(path, encoding='bad')
         # no container
         with pytest.raises(LookupError):
-            FileOperations().pull(path, encoding='bad')
+            Local().pull(path, encoding='bad')
 
     @staticmethod
     def test_str_encoding_doesnt_match(container: ops.Container, tmp_path: pathlib.Path):
@@ -1037,11 +1038,11 @@ class TestPull:
         contents = bytes(range(256))
         path.write_bytes(contents)
         # container
-        f = FileOperations(container).pull(path, encoding='utf-8')
+        f = Local(container).pull(path, encoding='utf-8')
         with pytest.raises(UnicodeDecodeError):
             f.read()
         # no container
-        f = FileOperations().pull(path, encoding='utf-8')
+        f = Local().pull(path, encoding='utf-8')
         with pytest.raises(UnicodeDecodeError):
             f.read()
 
@@ -1050,12 +1051,12 @@ class TestPull:
         path = tmp_path / 'path.test'
         # container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).pull(path)
+            Local(container).pull(path)
         print(exception_context.value)
         assert _errors.Path.FileNotFound.matches(exception_context.value)
         # no container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().pull(path)
+            Local().pull(path)
         print(exception_context.value)
         assert _errors.Path.FileNotFound.matches(exception_context.value)
 
@@ -1066,12 +1067,12 @@ class TestPull:
         os.chmod(path, 0)
         # container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).pull(path)
+            Local(container).pull(path)
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         # no container
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().pull(path)
+            Local().pull(path)
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
 
@@ -1079,10 +1080,10 @@ class TestPull:
     def test_path_not_absolute(container: ops.Container):
         path = pathlib.Path('path.test')
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations(container).pull(path)
+            Local(container).pull(path)
         assert _errors.Path.RelativePath.matches(exception_context.value)
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            FileOperations().pull(path)
+            Local().pull(path)
         assert _errors.Path.RelativePath.matches(exception_context.value)
 
 
