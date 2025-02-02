@@ -175,6 +175,7 @@ class FileOperations:
         if not ppath.exists():
             raise _errors.Path.FileNotFound.from_path(path=ppath, method='remove')
         _try_remove(ppath, recursive=recursive)
+        # TODO: _try_remove needs to raise appropriate pebble errors
 
     def push(
         self,
@@ -526,13 +527,15 @@ def _make_dir(
 def _try_remove(path: Path, recursive: bool) -> None:
     if not path.is_dir():
         path.unlink()
+        # TODO: pebble errors? Permission, FileNotFound, etc
         return
     try:
         path.rmdir()
     except OSError as e:
         assert e.errno == 39  # Directory not empty
+        # TODO: pebble errors in other cases? Permission, FileNotFound, etc
         if not recursive:
-            raise  # TODO: OSPathError? DirectoryNotEmptyError?
+            raise  # TODO: correct error. _errors.Path.FileExists?
         for p in path.iterdir():
             _try_remove(p, recursive=True)
 
