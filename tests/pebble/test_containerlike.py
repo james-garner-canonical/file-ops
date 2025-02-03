@@ -13,7 +13,7 @@ import ops
 import pytest
 from file_operations import _errors
 from file_operations import _fileinfo
-from file_operations import Local
+from file_operations.containerlike import Local
 
 
 DEBUG: bool = True
