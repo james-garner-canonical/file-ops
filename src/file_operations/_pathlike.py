@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import io
 import pathlib
-import shutil
 import typing
 from typing import Self, Sequence, TypeAlias
+
+from . import _chown_utils
 
 if typing.TYPE_CHECKING:
     import ops
@@ -88,6 +89,7 @@ class Protocol(_PurePathProtocol, typing.Protocol):
     def write_bytes(
         self,
         data: bytes,
+        permissions: int | None = None,
         user: str | None = None,
         user_id: int | None = None,
         group: str | None = None,
@@ -110,6 +112,7 @@ class Protocol(_PurePathProtocol, typing.Protocol):
         # None -> turn '\n' into os.linesep
         # '' | '\n' -> do nothing
         # '\r' | '\r\r' -> replace '\n' with this option
+        permissions: int | None = None,
         user: str | None = None,
         user_id: int | None = None,
         group: str | None = None,
@@ -123,6 +126,7 @@ class Protocol(_PurePathProtocol, typing.Protocol):
         mode: int = 0o777,  # TODO: check default value with pebble
         parents: bool = False,
         exist_ok: bool = False,
+        permissions: int | None = None,
         user: str | None = None,
         user_id: int | None = None,
         group: str | None = None,
@@ -280,6 +284,7 @@ class ContainerPath(pathlib.PurePath):
     def write_bytes(
         self,
         data: bytes,
+        permissions: int | None = None,
         user: str | None = None,
         user_id: int | None = None,
         group: str | None = None,
@@ -292,17 +297,14 @@ class ContainerPath(pathlib.PurePath):
         data: str,
         encoding: str | None = None,
         errors: typing.Literal['strict', 'ignore'] | None = None,
-        # should this suppress pebble errors?
+        # TODO: should this suppress pebble errors?
         # 'strict' -> raise ValueError for encoding error
         # 'ignore' -> just write stuff anyway, ignoring errors
         # None -> 'strict'
         newline: typing.Literal['', '\n', '\r', '\r\n'] | None = None,
-        # TODO: newline -- what does ops.Container do currently?
-        #       do we want to handle this if ops.Container doesn't?
         # None -> turn '\n' into os.linesep
         # '' | '\n' -> do nothing
         # '\r' | '\r\r' -> replace '\n' with this option
-        make_dirs: bool = False,
         permissions: int | None = None,
         user: str | None = None,
         user_id: int | None = None,
@@ -313,14 +315,13 @@ class ContainerPath(pathlib.PurePath):
             path=self,
             source=io.StringIO(data, newline=newline),
             encoding=encoding if encoding is not None else 'utf-8',
-            make_dirs=make_dirs,
+            make_dirs=False,
             permissions=permissions,
             user=user,
             user_id=user_id,
             group=group,
             group_id=group_id,
         )
-        ...
 
     # make_dir
     def mkdir(
@@ -328,6 +329,7 @@ class ContainerPath(pathlib.PurePath):
         mode: int = 0o777,  # TODO: check default value with pebble
         parents: bool = False,
         exist_ok: bool = False,
+        permissions: int | None = None,
         user: str | None = None,
         user_id: int | None = None,
         group: str | None = None,
@@ -349,6 +351,7 @@ class LocalPath(pathlib.Path):
     def write_bytes(  # TODO: data type?
         self,
         data: bytes,
+        permissions: int | None = None,
         user: str | None = None,
         user_id: int | None = None,
         group: str | None = None,
@@ -371,33 +374,17 @@ class LocalPath(pathlib.Path):
         # None -> turn '\n' into os.linesep
         # '' | '\n' -> do nothing
         # '\r' | '\r\r' -> replace '\n' with this option
-        make_dirs: bool = False,
         permissions: int | None = None,
         user: str | None = None,
         user_id: int | None = None,
         group: str | None = None,
         group_id: int | None = None,
     ) -> None:
-        def try_write():
-            super().write_text(data=data, encoding=encoding, errors=errors, newline=newline)
-
-        try:
-            try_write()
-        except FileNotFoundError:
-            if not make_dirs:
-                raise
-            self.parent.mkdir(
-                mode=permissions if permissions is not None else DIR_DEFAULT_MODE,
-                parents=True,
-                exist_ok=False,
-                user=user,
-                user_id=user_id,
-                group=group,
-                group_id=group_id,
-            )
-            try_write()
+        super().write_text(data=data, encoding=encoding, errors=errors, newline=newline)
         self.chmod(mode=permissions if permissions is not None else 0o644)  # Pebble default TODO: what should default behaviour be?
-        # TODO: chown
+        user_arg = _chown_utils.get_user_arg(str_name=user, int_id=user_id)
+        group_arg = _chown_utils.get_group_arg(str_name=group, int_id=group_id)
+        _chown_utils.try_chown(self, user=user_arg, group=group_arg)
 
     # make_dir
     def mkdir(
@@ -405,6 +392,7 @@ class LocalPath(pathlib.Path):
         mode: int = DIR_DEFAULT_MODE,
         parents: bool = False,
         exist_ok: bool = False,
+        permissions: int | None = None,
         user: str | None = None,
         user_id: int | None = None,
         group: str | None = None,
