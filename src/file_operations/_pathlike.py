@@ -60,9 +60,9 @@ class _PurePathProtocol(typing.Protocol):
     @property
     def stem(self) -> str: ...
 
-    def __new__(cls, *args: _StrPath, **kwargs: object) -> Self: ...
-
-    # def __init__(self, *args): ...  # constructor isn't be part of our protocol
+    # constructor isn't part of our protocol
+    # def __new__(cls, *args: _StrPath, **kwargs: object) -> Self: ...  # version dependent
+    # def __init__(self, *args): ...
 
     # def __reduce__(self): ...
     # ops.Container isn't pickleable, so:
@@ -125,7 +125,7 @@ class _PurePathProtocol(typing.Protocol):
 
     # def with_stem(self, stem: str) -> Self: ...  # 3.9+
 
-    # def with_segments(self, *pathsegments) -> Self: ...  # 3.12+ for new subclassing machinery
+    def with_segments(self, *pathsegments: _StrPath) -> Self: ...  # 3.12+ for new subclassing machinery
 
     def joinpath(self, *other: _StrPath) -> Self: ...
 
@@ -255,7 +255,7 @@ class ContainerPath(pathlib.PurePath):
         super().__init__(*args)
         self.container = container
         self._parents = tuple(type(self)(p, container=self.container) for p in super().parents)
-        self._parent = self._parents[-1]
+        self._parent = self._parents[-1] if self._parents else self
 
     @property
     def parents(self) -> Sequence[Self]:
@@ -264,6 +264,10 @@ class ContainerPath(pathlib.PurePath):
     @property
     def parent(self) -> Self:
         return self._parent
+
+    def __repr__(self) -> str:
+        # TODO: better repr for container
+        return f"{super().__repr__()[:-1]}, container=<ops.Container '{self.container.name}'>)"
 
     ####################################
     # methods that make a new instance #
@@ -309,6 +313,11 @@ class ContainerPath(pathlib.PurePath):
                     raise ValueError
         path = super().joinpath(*other)
         return type(self)(path, container=self.container)
+
+    def with_segments(self, *pathsegments: _StrPath) -> Self:
+        # required for python 3.12+ subclassing of PurePath
+        return type(self)(*pathsegments, container=self.container)
+
 
     ##############
     # comparison #
