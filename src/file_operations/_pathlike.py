@@ -159,16 +159,11 @@ class Protocol(_PurePathProtocol, typing.Protocol):
         data: str,
         encoding: str | None = None,
         errors: typing.Literal['strict', 'ignore'] | None = None,
-        # TODO: errors -- can pebble handle this?
+        # TODO: errors -- do we just suppress pebble errors here?
         # 'strict' -> raise ValueError for encoding error
         # 'ignore' -> just write stuff anyway, ignoring errors
         # None -> 'strict'
         newline: typing.Literal['', '\n', '\r', '\r\n'] | None = None,
-        # TODO: newline -- what does ops.Container do currently?
-        #       do we want to handle this if ops.Container doesn't?
-        # None -> turn '\n' into os.linesep
-        # '' | '\n' -> do nothing
-        # '\r' | '\r\r' -> replace '\n' with this option
         # pebble args
         permissions: int | None = None,
         user: str | None = None,
@@ -207,11 +202,11 @@ class Protocol(_PurePathProtocol, typing.Protocol):
         self,
         top_down: bool = True,
         on_error: typing.Callable[[OSError], None] | None = None,
-        follow_symlinks: bool = False,
+        follow_symlinks: bool = False,  # TODO: can we handle this?
     ) -> typing.Iterable[tuple[Self, list[str], list[str]]]: ...
 
     def lstat(self) -> os.stat_result: ...
-    # NOTE: either no stat or no lstat -- I think this reflects pebble's list_files behaviour?
+    # NOTE: either no stat or no lstat -- I think lstat is the one that reflects pebble's list_files behaviour?
 
     def owner(self) -> str: ...
 
@@ -396,20 +391,17 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
         data: str,
         encoding: str | None = None,
         errors: typing.Literal['strict', 'ignore'] | None = None,
-        # TODO: should this suppress pebble errors?
-        # 'strict' -> raise ValueError for encoding error
-        # 'ignore' -> just write stuff anyway, ignoring errors
-        # None -> 'strict'
         newline: typing.Literal['', '\n', '\r', '\r\n'] | None = None,
-        # None -> turn '\n' into os.linesep
-        # '' | '\n' -> do nothing
-        # '\r' | '\r\r' -> replace '\n' with this option
         permissions: int | None = None,
         user: str | None = None,
         user_id: int | None = None,
         group: str | None = None,
         group_id: int | None = None,
     ) -> None:
+        # newline:
+        # None -> turn '\n' into os.linesep
+        # '' | '\n' -> do nothing
+        # '\r' | '\r\r' -> replace '\n' with this option
         self.container.push(
             path=self,
             source=io.StringIO(data, newline=newline),
@@ -476,18 +468,12 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
 
     # list_files
     def iterdir(self) -> typing.Iterator[Self]:
-        def generator() -> typing.Iterator[Self]:
-            # the main purpose of returning this generator rather than yielding in iterdir
-            # is to defer any NotADirectoryError from call time to iteration time
-            # this is consistent with python 3.9 - 3.12
-            # but it seems that python 3.13 raises NotADirectoryError early, at call time
-            # so I guess we might as well follow suite?
-            if not self.is_dir():
-                raise NotADirectoryError(errno.ENOTDIR, os.strerror(errno.ENOTDIR), str(self))
-            file_infos = self.container.list_files(self)
-            for f in file_infos:
-                yield type(self)(f.path, container=self.container)
-        return generator()
+        # python < 3.13 defers NotADirectoryError to iteration time, but python 3.13 raises on call
+        if not self.is_dir():
+            raise NotADirectoryError(errno.ENOTDIR, os.strerror(errno.ENOTDIR), str(self))
+        file_infos = self.container.list_files(self)
+        for f in file_infos:
+            yield type(self)(f.path, container=self.container)
 
     def glob(self, pattern: str, *, case_sensitive: bool = False) -> typing.Iterable[Self]: ...
 
@@ -501,7 +487,6 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
     ) -> typing.Iterable[tuple[Self, list[str], list[str]]]: ...
 
     def lstat(self) -> os.stat_result: ...
-    # NOTE: either no stat or no lstat -- I think this reflects pebble's list_files behaviour?
 
     def owner(self) -> str: ...
 
@@ -510,7 +495,6 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
     def exists(self) -> bool: ...
 
     def is_dir(self) -> bool:
-        print(str(self))
         return self.container.isdir(self)
 
     def is_file(self) -> bool: ...
