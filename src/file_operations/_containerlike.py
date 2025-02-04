@@ -348,7 +348,12 @@ class Protocol(typing.Protocol):
         ...
 
 
-class _ChownContext(AbstractContextManager['_ChownContext', None]):
+_base: type[AbstractContextManager['_ChownContext', None]]
+try:
+    _base = AbstractContextManager['_ChownContext', None]  # pyright: ignore[reportAssignmentType]
+except TypeError:  # in python < 3.9 AbstractContextManager is not subscriptable
+    _base = AbstractContextManager  # pyright: ignore[reportAssignmentType]
+class _ChownContext(_base):
     """Perform some user/group validation on init, and the rest+chown on exit.
 
     Matches pebble's order of operations so that the outcomes and errors are the same.

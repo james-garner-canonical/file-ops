@@ -238,21 +238,17 @@ class Protocol(_PurePathProtocol, typing.Protocol):
     def is_socket(self) -> bool: ...
 
 
-class ContainerPath(pathlib.PurePath):
-    #def __new__(cls, *args: _StrPath, **kwargs: object) -> Self:
-    #    # delete this? it was only to try solving reportInconsistentConstructor
-    #    if 'container' not in kwargs:
-    #        raise ValueError
-    #    container = kwargs['container']
-    #    if not isinstance(container, ops.Container):
-    #        raise TypeError
-    #    instance = super().__new__(cls, *args, container=container)
-    #    return instance
+class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePosixPath?
+    def __new__(cls, *args: _StrPath, container: ops.Container) -> Self:
+        # required for python < 3.12 subclassing of PurePath
+        instance = super().__new__(cls, *args)  # set up path stuff in < 3.12
+        return instance  # __init__ will be called with *args and container=...
 
-    def __init__(  # pyright: ignore[reportInconsistentConstructor]
-        self, *args: _StrPath, container: ops.Container
-    ) -> None:
-        super().__init__(*args)
+    def __init__(self, *args: _StrPath, container: ops.Container) -> None:
+        try:
+            super().__init__(*args)  # set up path stuff in 3.12+
+        except TypeError:
+            super().__init__()  # this is just object.__init__
         self.container = container
         self._parents = tuple(type(self)(p, container=self.container) for p in super().parents)
         self._parent = self._parents[-1] if self._parents else self
@@ -535,7 +531,7 @@ class ContainerPath(pathlib.PurePath):
 
 
 
-class LocalPath(pathlib.Path):
+class LocalPath(type(pathlib.Path())):  # TODO: just inherit from PosixPath?
     def write_bytes(  # TODO: data type?
         self,
         data: bytes,
