@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import errno
 import io
+import os
 import pathlib
 import typing
-from typing import Self, Sequence, TypeAlias
+from typing import Sequence
 
 from ops import pebble
 
@@ -11,8 +13,8 @@ from . import _chown_utils
 from . import _errors
 
 if typing.TYPE_CHECKING:
+    from typing_extensions import Self, TypeAlias
     import ops
-    import os
 
 
 DIR_DEFAULT_MODE = 0o777
@@ -432,18 +434,27 @@ class ContainerPath(pathlib.PurePath):
     # remove
     def rmdir(self) -> None:
         if not self.is_dir():
-            raise NotADirectoryError(f"[Errno 20] Not a directory: '{self}'")
+            raise NotADirectoryError(errno.ENOTDIR, os.strerror(errno.ENOTDIR), str(self))
         try:
             self.container.remove_path(self, recursive=False)
         except pebble.Error as error:
-            for error_kind in [_errors.Path.something, _errors.Path.something_else]:
+            for error_kind in (
+                _errors.API.BadRequest,
+                _errors.API.FileNotFound,
+                _errors.Path.FileExists,
+                _errors.Path.RelativePath,
+                _errors.Path.FileNotFound,
+                _errors.Path.Lookup,
+                _errors.Path.Permission,
+                _errors.Path.Generic,
+            ):
                 if error_kind.matches(error):
                     raise error_kind.exception_from_error(error)
             raise
 
     def unlink(self, missing_ok: bool = False) -> None:
         if self.is_dir():
-            raise ...
+            raise IsADirectoryError(errno.EISDIR, os.strerror(errno.EISDIR), str(self))
         try:
             self.container.remove_path(self, recursive=False)
         except pebble.Error as error:
@@ -459,10 +470,15 @@ class ContainerPath(pathlib.PurePath):
             raise
 
     # list_files
-    def iterdir(self) -> typing.Iterable[Self]:
+    def iterdir(self) -> typing.Iterator[Self]:
         def generator() -> typing.Iterator[Self]:
+            # the main purpose of returning this generator rather than yielding in iterdir
+            # is to defer any NotADirectoryError from call time to iteration time
+            # this is consistent with python 3.9 - 3.12
+            # but it seems that python 3.13 raises NotADirectoryError early, at call time
+            # so I guess we might as well follow suite?
             if not self.is_dir():
-                raise NotADirectoryError
+                raise NotADirectoryError(errno.ENOTDIR, os.strerror(errno.ENOTDIR), str(self))
             file_infos = self.container.list_files(self)
             for f in file_infos:
                 yield type(self)(f.path, container=self.container)
@@ -488,7 +504,9 @@ class ContainerPath(pathlib.PurePath):
 
     def exists(self) -> bool: ...
 
-    def is_dir(self) -> bool: ...
+    def is_dir(self) -> bool:
+        print(str(self))
+        return self.container.isdir(self)
 
     def is_file(self) -> bool: ...
 
