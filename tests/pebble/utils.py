@@ -1,6 +1,4 @@
-# modes
-# strings for nicer pytest output
-
+from __future__ import annotations
 
 import os
 import pathlib
@@ -12,6 +10,8 @@ import ops
 import pytest
 
 
+# modes
+# strings for nicer pytest output
 BAD_PARENT_DIRECTORY_MODES_NO_CREATE: tuple[str | None, ...] = (
     '666',
     '644',  # pebble default for file push
