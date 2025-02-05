@@ -30,3 +30,10 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.dynamic]
 version = {file = ["src/file_ops/_version.txt"]}
+
+[tool.coverage.run]
+dynamic_context = "test_function"
+branch = true
+
+[tool.coverage.report]
+show_missing = true
