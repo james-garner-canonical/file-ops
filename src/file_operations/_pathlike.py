@@ -565,11 +565,6 @@ class LocalPath(type(pathlib.Path())):  # TODO: just inherit from PosixPath?
         # 'ignore' -> just write stuff anyway, ignoring errors
         # None -> 'strict'
         newline: typing.Literal['', '\n', '\r', '\r\n'] | None = None,
-        # TODO: newline -- what does ops.Container do currently?
-        #       do we want to handle this if ops.Container doesn't?
-        # None -> turn '\n' into os.linesep
-        # '' | '\n' -> do nothing
-        # '\r' | '\r\r' -> replace '\n' with this option
         permissions: int | None = None,
         user: str | None = None,
         user_id: int | None = None,
