@@ -14,6 +14,7 @@ from . import _errors
 
 if typing.TYPE_CHECKING:
     from typing_extensions import Self, TypeAlias
+    from _typeshed import ReadableBuffer
     import ops
 
 
@@ -138,7 +139,12 @@ class _PurePathProtocol(typing.Protocol):
 
 class Protocol(_PurePathProtocol, typing.Protocol):
     # pull
-    def read_text(self) -> str: ...
+    def read_text(
+        self,
+        encoding: str | None = None,
+        errors: typing.Literal['strict', 'ignore'] | None = None,
+        newline: typing.Literal['', '\n', '\r', '\r\n'] | None = None,
+    ) -> str: ...
 
     def read_bytes(self) -> bytes: ...
 
@@ -194,16 +200,16 @@ class Protocol(_PurePathProtocol, typing.Protocol):
     # list_files
     def iterdir(self) -> typing.Iterable[Self]: ...
 
-    def glob(self, pattern: str, *, case_sensitive: bool = False) -> typing.Iterable[Self]: ...
+    def glob(self, pattern: str, *, case_sensitive: bool = False) -> typing.Generator[Self]: ...
 
-    def rglob(self, pattern: str, *, case_sensitive: bool = False) -> typing.Iterable[Self]: ...
+    def rglob(self, pattern: str, *, case_sensitive: bool = False) -> typing.Generator[Self]: ...
 
     def walk(
         self,
         top_down: bool = True,
         on_error: typing.Callable[[OSError], None] | None = None,
         follow_symlinks: bool = False,  # TODO: can we handle this?
-    ) -> typing.Iterable[tuple[Self, list[str], list[str]]]: ...
+    ) -> typing.Iterator[tuple[Self, list[str], list[str]]]: ...
 
     def lstat(self) -> os.stat_result: ...
     # NOTE: either no stat or no lstat -- I think lstat is the one that reflects pebble's list_files behaviour?
@@ -212,7 +218,7 @@ class Protocol(_PurePathProtocol, typing.Protocol):
 
     def group(self) -> str: ...
 
-    def exists(self) -> bool: ...
+    def exists(self) -> bool: ...  # TODO: follow_symlinks argument?
 
     def is_dir(self) -> bool: ...
 
@@ -234,6 +240,13 @@ class Protocol(_PurePathProtocol, typing.Protocol):
 
 
 class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePosixPath?
+    """Path-like class that encapsulates an ops.Container for file operations.
+
+    Uses the parent class's version of __str__ and __fspath__, which means that str(container_path)
+    provides just the string representation of the filesystem path, and that methods like `open`
+    will treat a ContainerPath like a local filesystem path.
+    """
+
     def __new__(cls, *args: _StrPath, container: ops.Container) -> Self:
         # required for python < 3.12 subclassing of PurePath
         instance = super().__new__(cls, *args)  # set up path stuff in < 3.12
@@ -257,7 +270,6 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
         return self._parent
 
     def __repr__(self) -> str:
-        # TODO: better repr for container
         return f"{super().__repr__()[:-1]}, container=<ops.Container '{self.container.name}'>)"
 
     ####################################
@@ -278,7 +290,7 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
         path = super().__rtruediv__(key)
         return type(self)(path, container=self.container)
 
-    def relative_to(  # pyright: ignore[reportIncompatibleMethodOverride]
+    def relative_to(
         self, *other: _StrPath
         # we don't support the walk_up argument as it isn't available in python 3.8
     ) -> Self:
@@ -308,7 +320,6 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
     def with_segments(self, *pathsegments: _StrPath) -> Self:
         # required for python 3.12+ subclassing of PurePath
         return type(self)(*pathsegments, container=self.container)
-
 
     ##############
     # comparison #
@@ -368,7 +379,12 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
     # Protocol methods #
     ####################
 
-    def read_text(self) -> str:
+    def read_text(
+        self,
+        encoding: str | None = None,
+        errors: typing.Literal['strict', 'ignore'] | None = None,
+        newline: typing.Literal['', '\n', '\r', '\r\n'] | None = None,
+    ) -> str:
         return self.container.pull(self).read()
 
     def read_bytes(self) -> bytes:
@@ -377,14 +393,24 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
     # push
     def write_bytes(
         self,
-        data: bytes,
+        data: ReadableBuffer,
+        # pebble args
         permissions: int | None = None,
         user: str | None = None,
         user_id: int | None = None,
         group: str | None = None,
         group_id: int | None = None,
     ) -> None:
-        ...
+        self.container.push(
+            path=self,
+            source=io.BytesIO(data),
+            make_dirs=False,
+            permissions=permissions,
+            user=user,
+            user_id=user_id,
+            group=group,
+            group_id=group_id,
+        )
 
     def write_text(
         self,
@@ -392,6 +418,7 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
         encoding: str | None = None,
         errors: typing.Literal['strict', 'ignore'] | None = None,
         newline: typing.Literal['', '\n', '\r', '\r\n'] | None = None,
+        # pebble args
         permissions: int | None = None,
         user: str | None = None,
         user_id: int | None = None,
@@ -420,12 +447,13 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
         mode: int = 0o777,  # TODO: check default value with pebble
         parents: bool = False,
         exist_ok: bool = False,
+        # pebble args
         permissions: int | None = None,
         user: str | None = None,
         user_id: int | None = None,
         group: str | None = None,
         group_id: int | None = None,
-    ):
+    ) -> None:
         ...
 
     # remove
@@ -467,7 +495,7 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
             raise
 
     # list_files
-    def iterdir(self) -> typing.Iterator[Self]:
+    def iterdir(self) -> typing.Generator[Self]:
         # python < 3.13 defers NotADirectoryError to iteration time, but python 3.13 raises on call
         if not self.is_dir():
             raise NotADirectoryError(errno.ENOTDIR, os.strerror(errno.ENOTDIR), str(self))
@@ -475,16 +503,16 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
         for f in file_infos:
             yield type(self)(f.path, container=self.container)
 
-    def glob(self, pattern: str, *, case_sensitive: bool = False) -> typing.Iterable[Self]: ...
+    def glob(self, pattern: str, *, case_sensitive: bool = False) -> typing.Generator[Self]: ...
 
-    def rglob(self, pattern: str, *, case_sensitive: bool = False) -> typing.Iterable[Self]: ...
+    def rglob(self, pattern: str, *, case_sensitive: bool = False) -> typing.Generator[Self]: ...
 
     def walk(
         self,
         top_down: bool = True,
-        on_error: typing.Callable[[OSError], None] | None = None,
+        on_error: typing.Callable[[OSError], object] | None = None,
         follow_symlinks: bool = False,
-    ) -> typing.Iterable[tuple[Self, list[str], list[str]]]: ...
+    ) -> typing.Iterator[tuple[Self, list[str], list[str]]]: ...
 
     def lstat(self) -> os.stat_result: ...
 
@@ -518,7 +546,7 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
 class LocalPath(type(pathlib.Path())):  # TODO: just inherit from PosixPath?
     def write_bytes(  # TODO: data type?
         self,
-        data: bytes,
+        data: ReadableBuffer,
         permissions: int | None = None,
         user: str | None = None,
         user_id: int | None = None,
@@ -565,7 +593,7 @@ class LocalPath(type(pathlib.Path())):  # TODO: just inherit from PosixPath?
         user_id: int | None = None,
         group: str | None = None,
         group_id: int | None = None,
-    ):
+    ) -> None:
         ...
 
 
