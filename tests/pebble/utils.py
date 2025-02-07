@@ -9,7 +9,6 @@ from typing import Iterator
 import ops
 import pytest
 
-
 # modes
 # strings for nicer pytest output
 BAD_PARENT_DIRECTORY_MODES_NO_CREATE: tuple[str | None, ...] = (
@@ -41,9 +40,9 @@ GOOD_PARENT_DIRECTORY_MODES: tuple[str | None, ...] = (
 _MODES: tuple[str | None, ...] = (
     *GOOD_PARENT_DIRECTORY_MODES,
     *BAD_PARENT_DIRECTORY_MODES_NO_CREATE,
-    *BAD_PARENT_DIRECTORY_MODES_CREATE
+    *BAD_PARENT_DIRECTORY_MODES_CREATE,
 )
-ALL_MODES: tuple[str | None, ...] = tuple(reversed(sorted(_MODES, key=str)))
+ALL_MODES: tuple[str | None, ...] = tuple(sorted(_MODES, key=str, reverse=True))
 
 
 def _get_socket_path() -> str:
@@ -58,11 +57,12 @@ def _get_socket_path() -> str:
 
 @pytest.fixture
 def container() -> ops.Container:
-    class dummy_backend:
-        class _juju_context:
-            version = "9000"
+    class dummy_backend:  # noqa: N801 (CapWords convention)
+        class _juju_context:  # noqa: N801 (CapWords convention)
+            version = '9000'
+
     return ops.Container(
-        name="test",
+        name='test',
         backend=dummy_backend,  # pyright: ignore[reportArgumentType]
         pebble_client=ops.pebble.Client(socket_path=_get_socket_path()),
     )
@@ -80,7 +80,7 @@ def text_files() -> dict[str, str]:
 @pytest.fixture
 def interesting_dir(tmp_path: pathlib.Path, text_files: dict[str, str]) -> Iterator[pathlib.Path]:
     (tmp_path / 'empty_dir').mkdir()
-    empty_file = (tmp_path / 'empty_file.bin')
+    empty_file = tmp_path / 'empty_file.bin'
     empty_file.touch()
     (tmp_path / 'symlink.bin').symlink_to(empty_file)
     (tmp_path / 'symlink_dir').symlink_to(tmp_path / 'empty_dir')

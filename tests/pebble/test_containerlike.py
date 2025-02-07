@@ -1,27 +1,25 @@
 # pyright: reportPrivateUsage=false
 from __future__ import annotations
 
-import unittest.mock
 import os
 import pathlib
 import subprocess
+import unittest.mock
 
 import ops
 import pytest
-from file_operations import _errors
-from file_operations import _fileinfo
-from file_operations.containerlike import Local
-
 from utils import (
     ALL_MODES,
     BAD_PARENT_DIRECTORY_MODES_CREATE,
     BAD_PARENT_DIRECTORY_MODES_NO_CREATE,
     GOOD_PARENT_DIRECTORY_MODES,
-    container,  #pyright: ignore[reportUnusedImport]
-    interesting_dir,  #pyright: ignore[reportUnusedImport]
-    text_files,  #pyright: ignore[reportUnusedImport]
+    container,  # pyright: ignore[reportUnusedImport]  # noqa: F401
+    interesting_dir,  # pyright: ignore[reportUnusedImport]  # noqa: F401
+    text_files,  # pyright: ignore[reportUnusedImport]  # noqa: F401
 )
 
+from file_operations import _errors, _fileinfo
+from file_operations.containerlike import Local
 
 DEBUG: bool = True
 """Write debugging info to files during tests."""
@@ -80,7 +78,9 @@ class TestListFiles:
             assert with_container == without_container
 
     @staticmethod
-    def test_pattern_ok_text_files(container: ops.Container, interesting_dir: pathlib.Path, text_files: dict[str, str]):
+    def test_pattern_ok_text_files(
+        container: ops.Container, interesting_dir: pathlib.Path, text_files: dict[str, str]
+    ):
         pattern = '*.txt'
         with_container = Local(container).list_files(interesting_dir, pattern=pattern)
         without_container = Local().list_files(interesting_dir, pattern=pattern)
@@ -104,7 +104,9 @@ class TestListFiles:
         assert len(with_container) == 0
 
     @staticmethod
-    def test_given_bad_pattern_when_list_files_then_api_error(container: ops.Container, interesting_dir: pathlib.Path):
+    def test_given_bad_pattern_when_list_files_then_api_error(
+        container: ops.Container, interesting_dir: pathlib.Path
+    ):
         pattern = '[foo'
         with pytest.raises(ops.pebble.APIError) as exception_context:
             Local(container).list_files(interesting_dir, pattern=pattern)
@@ -165,7 +167,9 @@ class TestListFiles:
             assert with_container == without_container
 
     @staticmethod
-    def test_given_bad_pattern_when_list_files_with_itself_then_api_error(container: ops.Container, interesting_dir: pathlib.Path):
+    def test_given_bad_pattern_when_list_files_with_itself_then_api_error(
+        container: ops.Container, interesting_dir: pathlib.Path
+    ):
         pattern = '[foo'
         with pytest.raises(ops.pebble.APIError) as exception_context:
             Local(container).list_files(interesting_dir, pattern=pattern, itself=True)
@@ -178,7 +182,7 @@ class TestListFiles:
 
     @staticmethod
     def test_target_doesnt_exist(container: ops.Container, tmp_path: pathlib.Path):
-        path = (tmp_path / 'does/not/exist/')
+        path = tmp_path / 'does/not/exist/'
         # with container
         with pytest.raises(ops.pebble.APIError) as exception_context:
             Local(container).list_files(path)
@@ -228,14 +232,14 @@ class TestMakeDir:
         directory = tmp_path / 'directory'
         # container
         assert not directory.exists()
-        Local(container).make_dir(directory,make_parents=True, permissions=permissions)
+        Local(container).make_dir(directory, make_parents=True, permissions=permissions)
         assert directory.exists()
         info_dir_c = _fileinfo.from_path(directory)
         # cleanup
         rmdir(directory)
         # no container
         assert not directory.exists()
-        Local().make_dir(directory,make_parents=True, permissions=permissions)
+        Local().make_dir(directory, make_parents=True, permissions=permissions)
         assert directory.exists()
         info_dir = _fileinfo.from_path(directory)
         # cleanup -- pytest is bad at cleaning up when permissions are funky
@@ -250,14 +254,16 @@ class TestMakeDir:
 
     @staticmethod
     @pytest.mark.parametrize('mode', GOOD_PARENT_DIRECTORY_MODES)
-    def test_subdirectory_make_parents(container: ops.Container, tmp_path: pathlib.Path, mode: str | None):
+    def test_subdirectory_make_parents(
+        container: ops.Container, tmp_path: pathlib.Path, mode: str | None
+    ):
         permissions = int(f'0o{mode}', base=8) if mode is not None else mode
         directory = tmp_path / 'directory'
         subdirectory = directory / 'subdirectory'
         # container
         assert not subdirectory.exists()
         assert not directory.exists()
-        Local(container).make_dir(subdirectory,make_parents=True, permissions=permissions)
+        Local(container).make_dir(subdirectory, make_parents=True, permissions=permissions)
         assert directory.exists()
         assert subdirectory.exists()
         info_sub_c = _fileinfo.from_path(subdirectory)
@@ -268,7 +274,7 @@ class TestMakeDir:
         # no container
         assert not subdirectory.exists()
         assert not directory.exists()
-        Local().make_dir(subdirectory,make_parents=True, permissions=permissions)
+        Local().make_dir(subdirectory, make_parents=True, permissions=permissions)
         assert directory.exists()
         assert subdirectory.exists()
         info_sub = _fileinfo.from_path(subdirectory)
@@ -289,7 +295,9 @@ class TestMakeDir:
 
     @staticmethod
     @pytest.mark.parametrize('mode', BAD_PARENT_DIRECTORY_MODES_NO_CREATE)
-    def test_subdirectory_make_parents_bad_permissions_no_create(container: ops.Container, tmp_path: pathlib.Path, mode: str | None):
+    def test_subdirectory_make_parents_bad_permissions_no_create(
+        container: ops.Container, tmp_path: pathlib.Path, mode: str | None
+    ):
         """The permissions are bad because they lack the execute permission.
 
         This means that directory is created without the ability to write to it,
@@ -302,7 +310,7 @@ class TestMakeDir:
         assert not subdirectory.exists()
         assert not directory.exists()
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            Local(container).make_dir(subdirectory,make_parents=True, permissions=permissions)
+            Local(container).make_dir(subdirectory, make_parents=True, permissions=permissions)
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert directory.exists()
@@ -315,7 +323,7 @@ class TestMakeDir:
         assert not subdirectory.exists()
         assert not directory.exists()
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            Local().make_dir(subdirectory,make_parents=True, permissions=permissions)
+            Local().make_dir(subdirectory, make_parents=True, permissions=permissions)
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert directory.exists()
@@ -334,7 +342,9 @@ class TestMakeDir:
 
     @staticmethod
     @pytest.mark.parametrize('mode', BAD_PARENT_DIRECTORY_MODES_CREATE)
-    def test_subdirectory_make_parents_bad_permissions_create(container: ops.Container, tmp_path: pathlib.Path, mode: str | None):
+    def test_subdirectory_make_parents_bad_permissions_create(
+        container: ops.Container, tmp_path: pathlib.Path, mode: str | None
+    ):
         """The permissions are bad because they lack the read permission.
 
         Pebble must try some operation that requires read permissions on the parent directory
@@ -347,7 +357,7 @@ class TestMakeDir:
         assert not subdirectory.exists()
         assert not directory.exists()
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            Local(container).make_dir(subdirectory,make_parents=True, permissions=permissions)
+            Local(container).make_dir(subdirectory, make_parents=True, permissions=permissions)
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert directory.exists()
@@ -362,7 +372,7 @@ class TestMakeDir:
         assert not subdirectory.exists()
         assert not directory.exists()
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            Local().make_dir(subdirectory,make_parents=True, permissions=permissions)
+            Local().make_dir(subdirectory, make_parents=True, permissions=permissions)
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert directory.exists()
@@ -386,7 +396,9 @@ class TestMakeDir:
 
     @staticmethod
     @pytest.mark.parametrize('mode', BAD_PARENT_DIRECTORY_MODES_CREATE)
-    def test_subdirectory_make_parents_bad_permissions_create_nested(container: ops.Container, tmp_path: pathlib.Path, mode: str | None):
+    def test_subdirectory_make_parents_bad_permissions_create_nested(
+        container: ops.Container, tmp_path: pathlib.Path, mode: str | None
+    ):
         """The permissions are bad because they lack the read permission.
 
         Pebble must try some operation that requires read permissions on the parent directory
@@ -401,7 +413,7 @@ class TestMakeDir:
         assert not subdirectory.exists()
         assert not directory.exists()
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            Local(container).make_dir(subdirectory,make_parents=True, permissions=permissions)
+            Local(container).make_dir(subdirectory, make_parents=True, permissions=permissions)
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert directory.exists()
@@ -418,7 +430,7 @@ class TestMakeDir:
         assert not subdirectory.exists()
         assert not directory.exists()
         with pytest.raises(ops.pebble.PathError) as exception_context:
-            Local().make_dir(subdirectory,make_parents=True, permissions=permissions)
+            Local().make_dir(subdirectory, make_parents=True, permissions=permissions)
         print(exception_context.value)
         assert _errors.Path.Permission.matches(exception_context.value)
         assert directory.exists()
@@ -442,7 +454,9 @@ class TestMakeDir:
         assert_fileinfo_eq(info_subdir, info_subdir_c)
 
     @staticmethod
-    def test_given_parent_doesnt_exist_when_make_subdir_without_make_parents_then_failure(container: ops.Container, tmp_path: pathlib.Path):
+    def test_given_parent_doesnt_exist_when_make_subdir_without_make_parents_then_failure(
+        container: ops.Container, tmp_path: pathlib.Path
+    ):
         directory = tmp_path / 'directory'
         subdirectory = directory / 'subdirectory'
         # container
@@ -461,7 +475,9 @@ class TestMakeDir:
         assert not directory.exists()
 
     @staticmethod
-    def test_given_parent_doesnt_exist_when_make_subdir_with_make_parents_then_success(container: ops.Container, tmp_path: pathlib.Path):
+    def test_given_parent_doesnt_exist_when_make_subdir_with_make_parents_then_success(
+        container: ops.Container, tmp_path: pathlib.Path
+    ):
         directory = tmp_path / 'directory'
         subdirectory = directory / 'subdirectory'
         subdirectory.mkdir(parents=True)
@@ -510,7 +526,9 @@ class TestMakeDir:
         assert_fileinfo_eq(info_subdir, info_subdir_c)
 
     @staticmethod
-    def test_subdirectory_already_exists_no_make_parents(container: ops.Container, tmp_path: pathlib.Path):
+    def test_subdirectory_already_exists_no_make_parents(
+        container: ops.Container, tmp_path: pathlib.Path
+    ):
         directory = tmp_path / 'directory'
         subdirectory = directory / 'subdirectory'
         subdirectory.mkdir(parents=True)
@@ -573,7 +591,9 @@ class TestMakeDir:
         assert not pathlib.Path(directory).exists()
 
     @staticmethod
-    def test_chown_when_user_id_and_group_id_dont_exist(container: ops.Container, tmp_path: pathlib.Path):
+    def test_chown_when_user_id_and_group_id_dont_exist(
+        container: ops.Container, tmp_path: pathlib.Path
+    ):
         directory = tmp_path / 'directory'
         # with container
         with pytest.raises(ops.pebble.PathError) as exception_context:
@@ -668,7 +688,9 @@ class TestMakeDir:
         assert _errors.Path.Generic.matches(exception_context.value)
 
     @staticmethod
-    def test_chown_when_user_and_user_id_both_exist_but_dont_match(container: ops.Container, tmp_path: pathlib.Path):
+    def test_chown_when_user_and_user_id_both_exist_but_dont_match(
+        container: ops.Container, tmp_path: pathlib.Path
+    ):
         directory = tmp_path / 'directory'
         # TODO: find a user and user id combo or way to get it dynamically that
         # will exist at runtime but won't match
@@ -688,7 +710,9 @@ class TestMakeDir:
         assert not pathlib.Path(directory).exists()
 
     @staticmethod
-    def test_chown_when_user_and_user_id_both_provided_but_at_least_one_doesnt_exist(container: ops.Container, tmp_path: pathlib.Path):
+    def test_chown_when_user_and_user_id_both_provided_but_at_least_one_doesnt_exist(
+        container: ops.Container, tmp_path: pathlib.Path
+    ):
         # TODO: better way to make user and user_id
         user_id = 9000
         user_name = 'user-that-doesnt-exist-hopefully'
@@ -832,7 +856,9 @@ class TestPush:
 
     @staticmethod
     @pytest.mark.parametrize('mode', ALL_MODES)
-    def test_subdirectory_make_dirs(container: ops.Container, tmp_path: pathlib.Path, mode: str | None):
+    def test_subdirectory_make_dirs(
+        container: ops.Container, tmp_path: pathlib.Path, mode: str | None
+    ):
         permissions = int(f'0o{mode}', base=8) if mode is not None else mode
         directory = tmp_path / 'directory'
         subdirectory = directory / 'subdirectory'
@@ -1006,22 +1032,23 @@ class TestPull:
         assert _errors.Path.RelativePath.matches(exception_context.value)
 
 
-def fileinfo_eq(self: ops.pebble.FileInfo, other: ops.pebble.FileInfo, include_last_modified: bool = False) -> bool:
+def fileinfo_eq(
+    self: ops.pebble.FileInfo, other: ops.pebble.FileInfo, include_last_modified: bool = False
+) -> bool:
     return all(
         getattr(self, name) == getattr(other, name)
         for name in dir(self)
-        if (
-            not name.startswith('_')
-            and (include_last_modified or name != "last_modified")
-        )
+        if (not name.startswith('_') and (include_last_modified or name != 'last_modified'))
     )
 
 
-def assert_fileinfo_eq(self: ops.pebble.FileInfo, other: ops.pebble.FileInfo, include_last_modified: bool = False) -> None:
+def assert_fileinfo_eq(
+    self: ops.pebble.FileInfo, other: ops.pebble.FileInfo, include_last_modified: bool = False
+) -> None:
     for name in dir(self):
         if name.startswith('_'):
             continue
-        if not include_last_modified and name == "last_modified":
+        if not include_last_modified and name == 'last_modified':
             continue
         assert (name, getattr(self, name)) == (name, getattr(other, name))
 

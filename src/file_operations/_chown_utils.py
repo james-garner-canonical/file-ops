@@ -49,12 +49,12 @@ def try_chown(path: pathlib.Path | str, user: int | str | None, group: int | str
         try:
             pwd.getpwuid(user)
         except KeyError as e:
-            raise PermissionError(e)
+            raise PermissionError(e) from e
     if isinstance(group, int):
         try:
             grp.getgrgid(group)
         except KeyError as e:
-            raise PermissionError(e)
+            raise PermissionError(e) from e
     # PermissionError for e.g. unprivileged user trying to chown as root
     if user is not None and group is not None:
         shutil.chown(path, user=user, group=group)

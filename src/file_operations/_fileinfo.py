@@ -8,7 +8,6 @@ from pathlib import Path
 
 import ops
 
-
 _FT_MAP: dict[int, ops.pebble.FileType] = {
     stat.S_IFREG: ops.pebble.FileType.FILE,
     stat.S_IFDIR: ops.pebble.FileType.DIRECTORY,

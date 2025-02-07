@@ -6,7 +6,6 @@ from pathlib import PurePath
 import ops
 from ops import pebble
 
-
 ##########
 # pebble #
 ##########
@@ -54,7 +53,9 @@ class Path:
     class FileExists:
         @staticmethod
         def from_path(path: PurePath | str, method: str) -> pebble.PathError:
-            return pebble.PathError(kind='generic-file-error', message=f'{method} {path}: file exists')
+            return pebble.PathError(
+                kind='generic-file-error', message=f'{method} {path}: file exists'
+            )
 
         @staticmethod
         def matches(error: pebble.Error) -> bool:
@@ -98,7 +99,9 @@ class Path:
             exception: LookupError | KeyError, path: PurePath | str, method: str
         ) -> pebble.PathError:
             # TODO: does anything raise LookupError? We don't catch it in _file_ops currently
-            return pebble.PathError(kind='generic-file-error', message=f'{method} {path}: {exception}')
+            return pebble.PathError(
+                kind='generic-file-error', message=f'{method} {path}: {exception}'
+            )
 
         @staticmethod
         def matches(error: pebble.Error) -> bool:
@@ -106,7 +109,9 @@ class Path:
                 isinstance(error, pebble.PathError)
                 and error.kind == 'generic-file-error'
                 and (
-                    ('unknown user' in error.message or 'unknown group' in error.message)  # from pebble
+                    (
+                        'unknown user' in error.message or 'unknown group' in error.message
+                    )  # from pebble
                     or ('name not found' in error.message)  # from grp/pwd KeyError
                     # TODO: catch KeyError and raise something with a pebble-like message?
                 )
@@ -123,7 +128,9 @@ class Path:
                 if error_number is not None
                 else ' '.join(map(str, exception.args))
             )
-            return pebble.PathError(kind='permission-denied', message=f'{method} {path}: {message}')
+            return pebble.PathError(
+                kind='permission-denied', message=f'{method} {path}: {message}'
+            )
 
         @classmethod
         def matches(cls, error: pebble.Error) -> bool:
@@ -132,7 +139,9 @@ class Path:
     class Generic:
         @staticmethod
         def from_path(path: PurePath | str, method: str, message: str) -> pebble.PathError:
-            return pebble.PathError(kind='generic-file-error', message=f'{method} {path}: {message}')
+            return pebble.PathError(
+                kind='generic-file-error', message=f'{method} {path}: {message}'
+            )
 
         @staticmethod
         def matches(error: pebble.Error) -> bool:
@@ -141,8 +150,7 @@ class Path:
                 and error.kind == 'generic-file-error'
                 and not any(
                     e.matches(error)
-                    for e
-                    in (Path.FileExists, Path.RelativePath, Path.Lookup)
+                    for e in (Path.FileExists, Path.RelativePath, Path.Lookup)
                     # these also have kind 'generic-file-error'
                 )
             )

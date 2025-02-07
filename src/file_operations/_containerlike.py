@@ -20,9 +20,7 @@ from typing import (
     overload,
 )
 
-from . import _chown_utils
-from . import _errors
-from . import _fileinfo
+from . import _chown_utils, _errors, _fileinfo
 
 if TYPE_CHECKING:
     import ops
@@ -59,7 +57,7 @@ class Local:
             raise _errors.Path.RelativePath.from_path(path)
         if not ppath.exists():
             raise _errors.API.FileNotFound.from_path(path)
-        if itself or not ppath.is_dir():
+        if itself or not ppath.is_dir():  # noqa: SIM108 Use ternary operator
             paths = [ppath]
         else:
             paths = list(ppath.iterdir())
@@ -72,7 +70,7 @@ class Local:
             except re.error:
                 raise _errors.API.BadRequest.from_path(
                     path=path, message=f'syntax error in pattern "{pattern}"'
-                )
+                ) from None
             paths = [p for p in paths if fnmatch.fnmatch(str(p.name), pattern)]
         return [_fileinfo.from_path(p) for p in paths]
 
@@ -127,12 +125,12 @@ class Local:
         try:
             self.make_dir(dest_dir, make_parents=True)
         except Exception as e:
-            raise _errors.Ops.MultiPush.from_errors([(str(dest_dir), e)])
+            raise _errors.Ops.MultiPush.from_errors([(str(dest_dir), e)]) from e
         errors: list[tuple[str, Exception]] = []
         for path in source_paths:
             try:
                 _copy(source=path, dest=dest_dir)
-            except OSError as e:
+            except OSError as e:  # noqa: PERF203
                 # do we need to translate these errors into pebble errors?
                 errors.append((str(path), e))
         if errors:
@@ -233,21 +231,21 @@ class Local:
             group=group,
             group_id=group_id,
             method='push',
-            on_error=lambda: None,  # TODO: delete file on error? what about created directories? check pebble behaviour
+            on_error=lambda: None,  # TODO: delete file on error? directories? pebble behaviour?
         ):
             try:
                 ppath.touch(mode=0o600)  # rw permissions to allow us to write the file
-            except FileNotFoundError:
-                raise _errors.Path.FileNotFound.from_path(path, method='open')
-            _write_chunked(path=ppath, source_io=source_io, chunk_size=self._chunk_size, encoding=encoding)
+            except FileNotFoundError as e:
+                raise _errors.Path.FileNotFound.from_path(path, method='open') from e
+            _write_chunked(
+                path=ppath, source_io=source_io, chunk_size=self._chunk_size, encoding=encoding
+            )
         os.chmod(ppath, mode=permissions if permissions is not None else 0o644)  # Pebble default
 
     @overload
-    def pull(self, path: str | PurePath, *, encoding: None) -> BinaryIO:
-        ...
+    def pull(self, path: str | PurePath, *, encoding: None) -> BinaryIO: ...
     @overload
-    def pull(self, path: str | PurePath, *, encoding: str = 'utf-8') -> TextIO:
-        ...
+    def pull(self, path: str | PurePath, *, encoding: str = 'utf-8') -> TextIO: ...
     def pull(
         self,
         path: str | PurePath,
@@ -266,18 +264,16 @@ class Local:
                 newline='' if encoding is not None else None,
             )
         except PermissionError as e:
-            raise _errors.Path.Permission.from_exception(e, path=ppath, method='open')
+            raise _errors.Path.Permission.from_exception(e, path=ppath, method='open') from e
         except FileNotFoundError as e:
-            raise _errors.Path.FileNotFound.from_path(path=ppath, method='stat')
+            raise _errors.Path.FileNotFound.from_path(path=ppath, method='stat') from e
         return cast('Union[TextIO, BinaryIO]', f)
 
 
 class Protocol(typing.Protocol):
-    def exists(self, path: str | PurePath) -> bool:
-        ...
+    def exists(self, path: str | PurePath) -> bool: ...
 
-    def isdir(self, path: str | PurePath) -> bool:
-        ...
+    def isdir(self, path: str | PurePath) -> bool: ...
 
     def list_files(
         self,
@@ -285,8 +281,7 @@ class Protocol(typing.Protocol):
         *,
         pattern: str | None = None,
         itself: bool = False,
-    ) -> list[ops.pebble.FileInfo]:
-        ...
+    ) -> list[ops.pebble.FileInfo]: ...
 
     def make_dir(
         self,
@@ -298,25 +293,21 @@ class Protocol(typing.Protocol):
         user: str | None = None,
         group_id: int | None = None,
         group: str | None = None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
     def push_path(
         self,
         source_path: str | Path | Iterable[str | Path],
         dest_dir: str | PurePath,
-    ) -> None:
-        ...
+    ) -> None: ...
 
     def pull_path(
         self,
         source_path: str | PurePath | Iterable[str | PurePath],
         dest_dir: str | Path,
-    ) -> None:
-        ...
+    ) -> None: ...
 
-    def remove_path(self, path: str | PurePath, *, recursive: bool = False) -> None:
-        ...
+    def remove_path(self, path: str | PurePath, *, recursive: bool = False) -> None: ...
 
     def push(
         self,
@@ -330,34 +321,33 @@ class Protocol(typing.Protocol):
         user: str | None = None,
         group_id: int | None = None,
         group: str | None = None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
     @overload
-    def pull(self, path: str | PurePath, *, encoding: None) -> BinaryIO:
-        ...
+    def pull(self, path: str | PurePath, *, encoding: None) -> BinaryIO: ...
     @overload
-    def pull(self, path: str | PurePath, *, encoding: str = 'utf-8') -> TextIO:
-        ...
+    def pull(self, path: str | PurePath, *, encoding: str = 'utf-8') -> TextIO: ...
     def pull(
         self,
         path: str | PurePath,
         *,
         encoding: str | None = 'utf-8',
-    ) -> BinaryIO | TextIO:
-        ...
+    ) -> BinaryIO | TextIO: ...
 
 
-_base: type[AbstractContextManager['_ChownContext', None]]
+_base: type[AbstractContextManager[_ChownContext, None]]
 try:
     _base = AbstractContextManager['_ChownContext', None]  # pyright: ignore[reportAssignmentType]
 except TypeError:  # in python < 3.9 AbstractContextManager is not subscriptable
     _base = AbstractContextManager  # pyright: ignore[reportAssignmentType]
+
+
 class _ChownContext(_base):
     """Perform some user/group validation on init, and the rest+chown on exit.
 
     Matches pebble's order of operations so that the outcomes and errors are the same.
     """
+
     def __init__(
         self,
         path: Path,
@@ -372,9 +362,9 @@ class _ChownContext(_base):
             user_arg = _chown_utils.get_user_arg(str_name=user, int_id=user_id)
             group_arg = _chown_utils.get_group_arg(str_name=group, int_id=group_id)
         except KeyError as e:
-            raise _errors.Path.Lookup.from_exception(e, path=path, method=method)
+            raise _errors.Path.Lookup.from_exception(e, path=path, method=method) from e
         except ValueError as e:
-            raise _errors.Path.Generic.from_path(path=path, method=method, message=str(e))
+            raise _errors.Path.Generic.from_path(path=path, method=method, message=str(e)) from e
         if user_arg is None and group_arg is not None:
             raise _errors.Path.Generic.from_path(
                 path=path,
@@ -406,10 +396,12 @@ class _ChownContext(_base):
             _chown_utils.try_chown(self.path, user=self.user_arg, group=self.group_arg)
         except KeyError as e:
             self.on_error()
-            raise _errors.Path.Lookup.from_exception(e, path=self.path, method=self.method)
+            raise _errors.Path.Lookup.from_exception(e, path=self.path, method=self.method) from e
         except PermissionError as e:
             self.on_error()
-            raise _errors.Path.Permission.from_exception(e, path=self.path, method=self.method)
+            raise _errors.Path.Permission.from_exception(
+                e, path=self.path, method=self.method
+            ) from e
 
 
 def _make_dir(
@@ -421,14 +413,13 @@ def _make_dir(
     group: str | None,
     group_id: int | None,
 ) -> None:
-    """As pathlib.Path.mkdir, but handles chown and propagates mode to parents.
-    """
+    """As pathlib.Path.mkdir, but handles chown and propagates mode to parents."""
 
     def _try_make_dir(path: Path, mode: int) -> None:
         try:
             os.mkdir(path)
         except PermissionError as e:
-            raise _errors.Path.Permission.from_exception(e, path=path, method='mkdir')
+            raise _errors.Path.Permission.from_exception(e, path=path, method='mkdir') from e
         os.chmod(path, mode)  # separate chmod to bypass umask
 
     with _ChownContext(
@@ -442,9 +433,9 @@ def _make_dir(
     ):
         try:
             _try_make_dir(path, mode=mode)
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             if not make_parents or path.parent == path:
-                raise _errors.Path.FileNotFound.from_path(path=path, method='mkdir')
+                raise _errors.Path.FileNotFound.from_path(path=path, method='mkdir') from e
             _make_dir(
                 path.parent,
                 mode=mode,
@@ -458,16 +449,18 @@ def _make_dir(
             # PermissionError if we can't read the parent directory, following pebble
             if not os.access(path.parent, os.R_OK):
                 raise _errors.Path.Permission.from_exception(
-                    PermissionError(f'cannot read: {path.parent} (created via make_parents/make_dirs)'),
+                    PermissionError(
+                        f'cannot read: {path.parent} (created via make_parents/make_dirs)'
+                    ),
                     path=path,
                     method='mkdir',
-                )
-        except OSError:
+                ) from None
+        except OSError as e:
             # FileExistsError -- following pathlib.Path.mkdir:
             # Cannot rely on checking for EEXIST, since the operating system
             # could give priority to other errors like EACCES or EROFS
             if not make_parents:
-                raise _errors.Path.FileExists.from_path(path=path, method='mkdir')
+                raise _errors.Path.FileExists.from_path(path=path, method='mkdir') from e
 
 
 def _try_remove(path: Path, recursive: bool) -> None:
@@ -486,9 +479,11 @@ def _try_remove(path: Path, recursive: bool) -> None:
             _try_remove(p, recursive=True)
 
 
-def _write_chunked(path: Path, source_io: BinaryIO | TextIO, chunk_size: int, encoding: str) -> None:
+def _write_chunked(
+    path: Path, source_io: BinaryIO | TextIO, chunk_size: int, encoding: str
+) -> None:
     with path.open('wb') as f:
-        content: Union[str, bytes] = source_io.read(chunk_size)
+        content: str | bytes = source_io.read(chunk_size)
         while content:
             if isinstance(content, str):
                 content = content.encode(encoding)

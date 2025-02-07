@@ -9,13 +9,12 @@ from typing import Sequence
 
 from ops import pebble
 
-from . import _chown_utils
-from . import _errors
+from . import _chown_utils, _errors
 
 if typing.TYPE_CHECKING:
-    from typing_extensions import Self, TypeAlias
-    from _typeshed import ReadableBuffer
     import ops
+    from _typeshed import ReadableBuffer
+    from typing_extensions import Self, TypeAlias
 
 
 DIR_DEFAULT_MODE = 0o777
@@ -126,7 +125,9 @@ class _PurePathProtocol(typing.Protocol):
 
     # def with_stem(self, stem: str) -> Self: ...  # 3.9+
 
-    def with_segments(self, *pathsegments: _StrPath) -> Self: ...  # 3.12+ for new subclassing machinery
+    def with_segments(
+        self, *pathsegments: _StrPath
+    ) -> Self: ...  # 3.12+ for new subclassing machinery
 
     def joinpath(self, *other: _StrPath) -> Self: ...
 
@@ -212,7 +213,6 @@ class Protocol(_PurePathProtocol, typing.Protocol):
     ) -> typing.Iterator[tuple[Self, list[str], list[str]]]: ...
 
     def lstat(self) -> os.stat_result: ...
-    # NOTE: either no stat or no lstat -- I think lstat is the one that reflects pebble's list_files behaviour?
 
     def owner(self) -> str: ...
 
@@ -228,18 +228,28 @@ class Protocol(_PurePathProtocol, typing.Protocol):
 
     def is_symlink(self) -> bool: ...
 
-    def is_junction(self) -> bool: ...  # TODO: don't include in Protocol since it's always false in our case?
+    def is_junction(
+        self,
+    ) -> bool: ...  # TODO: don't include in Protocol since it's always false in our case?
 
-    def is_block_device(self) -> bool: ...  # TODO: pebble only tells us if it's a device, so maybe we provide is_device instead
+    def is_block_device(
+        self,
+    ) -> (
+        bool
+    ): ...  # TODO: pebble only tells us if it's a device, so maybe we provide is_device instead
 
-    def is_char_device(self) -> bool: ...  # TODO: pebble only tells us if it's a device, so maybe we provide is_device instead
+    def is_char_device(
+        self,
+    ) -> (
+        bool
+    ): ...  # TODO: pebble only tells us if it's a device, so maybe we provide is_device instead
 
     def is_fifo(self) -> bool: ...
 
     def is_socket(self) -> bool: ...
 
 
-class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePosixPath?
+class ContainerPath(pathlib.PurePosixPath):
     """Path-like class that encapsulates an ops.Container for file operations.
 
     Uses the parent class's version of __str__ and __fspath__, which means that str(container_path)
@@ -277,27 +287,25 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
     ####################################
 
     def __truediv__(self, key: _StrPath) -> Self:
-        if isinstance(key, ContainerPath):
-            if self.container != key.container:
-                raise ValueError
+        if isinstance(key, ContainerPath) and self.container != key.container:
+            raise ValueError
         path = super().__truediv__(key)
         return type(self)(path, container=self.container)
 
     def __rtruediv__(self, key: _StrPath) -> Self:
-        if isinstance(key, ContainerPath):
-            if self.container != key.container:
-                raise ValueError
+        if isinstance(key, ContainerPath) and self.container != key.container:
+            raise ValueError
         path = super().__rtruediv__(key)
         return type(self)(path, container=self.container)
 
     def relative_to(
-        self, *other: _StrPath
+        self,
+        *other: _StrPath,
         # we don't support the walk_up argument as it isn't available in python 3.8
     ) -> Self:
         for o in other:
-            if isinstance(o, ContainerPath):
-                if self.container != o.container:
-                    raise ValueError
+            if isinstance(o, ContainerPath) and self.container != o.container:
+                raise ValueError
         path = super().relative_to(*other)
         return type(self)(path, container=self.container)
 
@@ -311,9 +319,8 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
 
     def joinpath(self, *other: _StrPath) -> Self:
         for o in other:
-            if isinstance(o, ContainerPath):
-                if self.container != o.container:
-                    raise ValueError
+            if isinstance(o, ContainerPath) and self.container != o.container:
+                raise ValueError
         path = super().joinpath(*other)
         return type(self)(path, container=self.container)
 
@@ -336,7 +343,8 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
         )
 
     def __lt__(  # pyright: ignore[reportIncompatibleMethodOverride]
-        self, other: Self
+        self,
+        other: Self,
         # PurePath has other: PurePath -- Path comparisons are only for the same kind of paths
     ) -> bool:
         if not isinstance(other, type(self)):
@@ -346,7 +354,8 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
         return super().__lt__(other)
 
     def __le__(  # pyright: ignore[reportIncompatibleMethodOverride]
-        self, other: Self
+        self,
+        other: Self,
         # PurePath has other: PurePath -- Path comparisons are only for the same kind of paths
     ) -> bool:
         if not isinstance(other, type(self)):
@@ -356,7 +365,8 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
         return super().__le__(other)
 
     def __gt__(  # pyright: ignore[reportIncompatibleMethodOverride]
-        self, other: Self
+        self,
+        other: Self,
         # PurePath has other: PurePath -- Path comparisons are only for the same kind of paths
     ) -> bool:
         if not isinstance(other, type(self)):
@@ -366,7 +376,8 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
         return super().__gt__(other)
 
     def __ge__(  # pyright: ignore[reportIncompatibleMethodOverride]
-        self, other: Self
+        self,
+        other: Self,
         # PurePath has other: PurePath -- Path comparisons are only for the same kind of paths
     ) -> bool:
         if not isinstance(other, type(self)):
@@ -453,8 +464,7 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
         user_id: int | None = None,
         group: str | None = None,
         group_id: int | None = None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
     # remove
     def rmdir(self) -> None:
@@ -474,7 +484,7 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
                 _errors.Path.Generic,
             ):
                 if error_kind.matches(error):
-                    raise error_kind.exception_from_error(error)
+                    raise error_kind.exception_from_error(error) from error
             raise
 
     def unlink(self, missing_ok: bool = False) -> None:
@@ -486,12 +496,10 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
             if _errors.Path.FileNotFound.matches(error):
                 if missing_ok:
                     return
-                raise FileNotFoundError
-                # or
-                raise _errors.Path.FileNotFound.exception_from_error(error)
+                raise FileNotFoundError from error
             for error_kind in []:
                 if error_kind.matches(error):
-                    raise error_kind.exception_from_error(error)
+                    raise error_kind.exception_from_error(error) from error
             raise
 
     # list_files
@@ -531,19 +539,28 @@ class ContainerPath(type(pathlib.PurePath())):  # TODO: just inherit from PurePo
 
     def is_symlink(self) -> bool: ...
 
-    def is_junction(self) -> bool: ...  # TODO: don't include in Protocol since it's always false in our case?
+    def is_junction(
+        self,
+    ) -> bool: ...  # TODO: don't include in Protocol since it's always false in our case?
 
-    def is_block_device(self) -> bool: ...  # TODO: pebble only tells us if it's a device, so maybe we provide is_device instead
+    def is_block_device(
+        self,
+    ) -> (
+        bool
+    ): ...  # TODO: pebble only tells us if it's a device, so maybe we provide is_device instead
 
-    def is_char_device(self) -> bool: ...  # TODO: pebble only tells us if it's a device, so maybe we provide is_device instead
+    def is_char_device(
+        self,
+    ) -> (
+        bool
+    ): ...  # TODO: pebble only tells us if it's a device, so maybe we provide is_device instead
 
     def is_fifo(self) -> bool: ...
 
     def is_socket(self) -> bool: ...
 
 
-
-class LocalPath(type(pathlib.Path())):  # TODO: just inherit from PosixPath?
+class LocalPath(pathlib.PosixPath):  # TODO: just inherit from PosixPath?
     def write_bytes(  # TODO: data type?
         self,
         data: ReadableBuffer,
@@ -552,8 +569,7 @@ class LocalPath(type(pathlib.Path())):  # TODO: just inherit from PosixPath?
         user_id: int | None = None,
         group: str | None = None,
         group_id: int | None = None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
     def write_text(  # TODO: use str instead of Literals?
         self,
@@ -572,7 +588,8 @@ class LocalPath(type(pathlib.Path())):  # TODO: just inherit from PosixPath?
         group_id: int | None = None,
     ) -> None:
         super().write_text(data=data, encoding=encoding, errors=errors, newline=newline)
-        self.chmod(mode=permissions if permissions is not None else 0o644)  # Pebble default TODO: what should default behaviour be?
+        self.chmod(mode=permissions if permissions is not None else 0o644)
+        # 0o644 is Pebble default TODO: what should default behaviour be?
         user_arg = _chown_utils.get_user_arg(str_name=user, int_id=user_id)
         group_arg = _chown_utils.get_group_arg(str_name=group, int_id=group_id)
         _chown_utils.try_chown(self, user=user_arg, group=group_arg)
@@ -588,8 +605,7 @@ class LocalPath(type(pathlib.Path())):  # TODO: just inherit from PosixPath?
         user_id: int | None = None,
         group: str | None = None,
         group_id: int | None = None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
 
 def _type_check_1(  # pyright: ignore[reportUnusedFunction]
@@ -628,7 +644,9 @@ def _type_check_1(  # pyright: ignore[reportUnusedFunction]
     # we expect PurePath to be incompatible because it lacks read_text etc
 
 
-_StrOrBytesPath: typing.TypeAlias = 'str | bytes | os.PathLike[str] | os.PathLike[bytes]'
+_StrOrBytesPath: TypeAlias = 'str | bytes | os.PathLike[str] | os.PathLike[bytes]'
+
+
 def _type_check_2(  # pyright: ignore[reportUnusedFunction]
     _pure_path_protocol: _PurePathProtocol,
     _protocol: Protocol,
@@ -639,40 +657,52 @@ def _type_check_2(  # pyright: ignore[reportUnusedFunction]
 ) -> None:
     _p: _StrOrBytesPath
     _pp: os.PathLike[str]
-    open(_pure_path_protocol)  # pyright: ignore[reportArgumentType]
+    open(_pure_path_protocol)  # pyright: ignore[reportArgumentType] # noqa: SIM115
     _p = _pure_path_protocol  # pyright: ignore[reportAssignmentType]
     _pp = _pure_path_protocol  # pyright: ignore[reportAssignmentType]
-    open(_protocol)  # pyright: ignore[reportArgumentType]
+    open(_protocol)  # pyright: ignore[reportArgumentType] # noqa: SIM115
     _p = _protocol  # pyright: ignore[reportAssignmentType]
     _pp = _protocol  # pyright: ignore[reportAssignmentType]
-    open(_container_path)
+    open(_container_path)  # noqa: SIM115
     _p = _container_path
     _pp = _container_path
     # it would be nice to make the above a type checking + runtime error
     # unfortunately ContainerPath passes type checking somehow because it inherits from PurePath
-    open(_local_path)
-    open(_path)
-    open(_pure_path)
+    open(_local_path)  # noqa: SIM115
+    open(_path)  # noqa: SIM115
+    open(_pure_path)  # noqa: SIM115
 
 
 def _type_check_3():
     _pp: os.PathLike[str]
+
     class AnnoyingABCInheritance0(os.PathLike): ...
+
     f0 = AnnoyingABCInheritance0()
+
     class AnnoyingABCInheritance1(os.PathLike):
         def __fspath__(self, incompatible) -> str: ...
+
     f1 = AnnoyingABCInheritance1()
+
     class AnnoyingABCInheritance2(os.PathLike):
         def __fspath__(self) -> None: ...
+
     f2 = AnnoyingABCInheritance2()
+
     class Good:
         def __fspath__(self) -> str: ...
+
     g = Good()
+
     class Bad1(Good):
         def __fspath__(self, incompatible) -> str: ...
+
     b1 = Bad1()
+
     class Bad2(Good):
         def __fspath__(self) -> None: ...
+
     b2 = Bad2()
     _pp = f0  # argh!
     _pp = f1  # argh!

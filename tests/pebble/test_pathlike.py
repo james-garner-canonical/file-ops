@@ -1,28 +1,18 @@
-
 # pyright: reportPrivateUsage=false
 from __future__ import annotations
 
-import unittest.mock
 import os
 import pathlib
-import subprocess
 
 import ops
 import pytest
-from file_operations import _errors
-from file_operations import _fileinfo
-from file_operations._pathlike import ContainerPath, LocalPath
-
 from utils import (
-    ALL_MODES,
-    BAD_PARENT_DIRECTORY_MODES_CREATE,
-    BAD_PARENT_DIRECTORY_MODES_NO_CREATE,
-    GOOD_PARENT_DIRECTORY_MODES,
-    container,  #pyright: ignore[reportUnusedImport]
-    interesting_dir,  #pyright: ignore[reportUnusedImport]
-    text_files,  #pyright: ignore[reportUnusedImport]
+    container,  # pyright: ignore[reportUnusedImport]  # noqa: F401
+    interesting_dir,  # pyright: ignore[reportUnusedImport]  # noqa: F401
+    text_files,  # pyright: ignore[reportUnusedImport]  # noqa: F401
 )
 
+from file_operations._pathlike import ContainerPath, LocalPath
 
 DEBUG: bool = True
 """Write debugging info to files during tests."""
