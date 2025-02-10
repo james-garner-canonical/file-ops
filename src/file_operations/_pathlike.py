@@ -5,7 +5,7 @@ import io
 import os
 import pathlib
 import typing
-from typing import Sequence
+from typing import Generator, Sequence
 
 from ops import pebble
 
@@ -35,12 +35,113 @@ class _StrPathLike(typing.Protocol):
 
 # based on typeshed.stdlib.pathlib.PurePath
 # https://github.com/python/typeshed/blob/main/stdlib/pathlib.pyi#L29
-class _PurePathProtocol(typing.Protocol):
+class _PurePathSubset(typing.Protocol):
+    """Defines the subset of pathlib.PurePath methods required."""
+
+    # constructor isn't part of our protocol
+    # ContainerPath constructor will differ from pathlib.Path constructor
+    # def __new__(cls, *args: _StrPath, **kwargs: object) -> Self: ...
+    # NOTE: __new__ signature is version dependent
+    # def __init__(self, *args): ...
+
+    def __hash__(self) -> int: ...
+    # should ContainerPath be hashable? We can assume container names are unique, right?
+
+    # def __reduce__(self): ...
+    # ops.Container isn't pickleable, so:
+    # a) this shouldn't be part of the protocol
+    # b) at runtime ContainerPath should fail to pickle
+
+    # comparison methods
+    # ContainerPath comparison methods will return NotImplemented if other is not a
+    # ContainerPath with the same container; otherwise the paths are compared
+    def __lt__(self, other: Self) -> bool: ...
+    def __le__(self, other: Self) -> bool: ...
+    def __gt__(self, other: Self) -> bool: ...
+    def __ge__(self, other: Self) -> bool: ...
+    def __eq__(self, other: object, /) -> bool: ...
+
+    # ContainerPath / (str or pathlib.Path), or (str or pathlib.Path) / containerPath
+    # will result in a new ContainerPath with the same container.
+    # ContainerPath / ContainerPath is an error if the containers are not the same,
+    # otherwise it too results in a new ContainerPath with the same container.
+    def __truediv__(self, key: _StrPath | Self) -> Self: ...
+    def __rtruediv__(self, key: _StrPath | Self) -> Self: ...
+
+    # def __fspath__(self) -> str: ...
+    # we don't want ContainerPath to be path-like
+
+    # def __bytes__(self) -> bytes: ...
+    # we don't want ContainerPath to be mistakenly used like a pathlib.Path
+
+    def as_posix(self) -> str: ...
+    # we don't want ContainerPath to be mistakenly used like a pathlib.Path
+    # but maybe this is explicit enough to be our way to a pathlib.Path?
+    # e.g. def f(p: PathProtocol): pathlib.Path(p.as_posix())
+
+    # def as_uri(self) -> str: ...
+    # this doesn't seem useful and is potentially confusing,so it won't be implemented
+    # likewise, this constructor (added in 3.13) won't be implemented
+    # @classmethod
+    # def from_uri(uri: str) -> Self: ...
+
+    def is_absolute(self) -> bool: ...
+
+    def is_reserved(self) -> bool: ...
+    # this will always return False in ContainerPath, since we assume a Linux container
+
+    def match(self, path_pattern: str) -> bool: ...
+    # signature extended further in 3.12+
+    # def match(self, pattern: str, * case_sensitive: bool = False) -> bool: ...
+    # not part of the protocol but may eventually be provided on ContainerPath
+    # to ease compatibility with pathlib.Path on 3.12+
+
+    # def full_match(self, pattern: str, * case_sensitive: bool = False) -> bool: ...
+    # 3.13+
+    # not part of the protocol but may eventually be provided on ContainerPath
+    # to ease compatibility with pathlib.Path on 3.13+
+
+    def relative_to(self, other: _StrPath, /) -> Self: ...
+    # Python 3.12 deprecates the below signature, to be dropped in 3.14
+    # def relative_to(self, *other: _StrPath) -> Self: ...
+    # to ease future compatibility, we'll just drop support for the old signature now
+    #
+    # Python 3.12 further modifies the signature with an additional keyword argument
+    # def relative_to(self, other: _StrPath, walk_up: bool = False) -> Self: ...
+    # this is not part of the protocol but may eventually be provided on ContainerPath
+    # to ease compatibility with pathlib.Path on 3.12+
+
+    # def is_relative_to(self, other: _StrPath) -> Self: ...  # 3.9+
+    # not part of protocol but can be provided on ContainerPath implementation
+    # to ease compatibility with pathlib.Path on 3.9+
+    # could be added to the protocol if we're happy for LocalPath to double as backports
+
+    def with_name(self, name: str) -> Self: ...
+
+    def with_suffix(self, suffix: str) -> Self: ...
+
+    # def with_stem(self, stem: str) -> Self: ...  # 3.9+
+    # not part of protocol but can be provided on ContainerPath implementation
+    # to ease compatibility with pathlib.Path on 3.9+
+    # could be added to the protocol if we're happy for LocalPath to double as backports
+
+    # def with_segments(self, *pathsegments: _StrPath) -> Self: ...
+    # required for 3.12+ subclassing machinery
+    # doesn't need to be in the protocol, nor to be implemented in ContainerPath
+
+    def joinpath(self, *other: _StrPath) -> Self: ...
+
+    @property
+    def parents(self) -> Sequence[Self]: ...
+
+    @property
+    def parent(self) -> Self: ...
+
     @property
     def parts(self) -> tuple[str, ...]: ...
 
     @property
-    def drive(self) -> str: ...
+    def drive(self) -> str: ...  # will always be '' for Posix
 
     @property
     def root(self) -> str: ...
@@ -60,87 +161,15 @@ class _PurePathProtocol(typing.Protocol):
     @property
     def stem(self) -> str: ...
 
-    # constructor isn't part of our protocol
-    # def __new__(cls, *args: _StrPath, **kwargs: object) -> Self: ...  # version dependent
-    # def __init__(self, *args): ...
 
-    # def __reduce__(self): ...
-    # ops.Container isn't pickleable, so:
-    # a) this shouldn't be part of the protocol
-    # b) at runtime ContainerPath should fail to pickle
-    # we can implement this with a __reduce__ property that raises an AttributeError
+class _ConcretePathSubset(typing.Protocol):
+    """Defines the subset of pathlib.Path methods required.
 
-    def __hash__(self) -> int: ...
+    Note that the current idea is to extend the signatures of the file creation methods,
+    to support setting ownership and permissions at file creation time, as that's when
+    Pebble sets them. See _ConcretePathSubsetExtendedSignatures for details.
+    """
 
-    # def __fspath__(self) -> str: ...
-    # NOTE: By excluding this from the protocol, we can make it a type checking
-    # error to call (e.g.) open(...) on a fileops.pathlike.Protocol.
-    # Unfortunately due to inheritance from PurePath in the current implementation,
-    # it isn't a type error to call (e.g.) open(...) on a ContainerPath,
-    # and PurePath provides an __fspath__ implementation that results in it
-    # being treated like a regular path by open at runtime.
-    # We can make it fail at runtime by (e.g.)
-    # making a __fspath__ property that raises an AttributeError
-    # but the type checker doesn't care about this it seems.
-    # This is because pathlib.PurePath calls os.PathLike.register(PurePath)
-    # -- that is because of the ABC, the type checker assumes the implementation is ok
-    # It's not clear whether to
-    # a) include or remove this method from the protocol
-    # b) make it a runtime error to try to open a ContainerPath
-    #    -- and use *self.parts for methods returning a ContainerPath
-
-    def __lt__(self, other: Self) -> bool: ...
-
-    def __le__(self, other: Self) -> bool: ...
-
-    def __gt__(self, other: Self) -> bool: ...
-
-    def __ge__(self, other: Self) -> bool: ...
-
-    def __truediv__(self, key: _StrPath) -> Self: ...
-
-    def __rtruediv__(self, key: _StrPath) -> Self: ...
-
-    def __bytes__(self) -> bytes: ...
-
-    def as_posix(self) -> str: ...
-
-    def as_uri(self) -> str: ...
-
-    def is_absolute(self) -> bool: ...
-
-    def is_reserved(self) -> bool: ...
-
-    def match(self, path_pattern: str) -> bool: ...  # signature extended in 3.12+
-
-    # def full_match(self, pattern: str, * case_sensitive: bool = False) -> bool: ...  # 3.13+
-
-    def relative_to(self, *other: _StrPath) -> Self: ...
-
-    # def is_relative_to(self, other: _StrPath) -> Self: ...  # 3.9+
-
-    def with_name(self, name: str) -> Self: ...
-
-    def with_suffix(self, suffix: str) -> Self: ...
-
-    # def with_stem(self, stem: str) -> Self: ...  # 3.9+
-
-    # def with_segments(
-    #     self, *pathsegments: _StrPath
-    # ) -> Self: ...
-    # 3.12+ for new subclassing machinery
-    # we'll have to implement it, but it shouldn't be part of the protocol
-
-    def joinpath(self, *other: _StrPath) -> Self: ...
-
-    @property
-    def parents(self) -> Sequence[Self]: ...
-
-    @property
-    def parent(self) -> Self: ...
-
-
-class Protocol(_PurePathProtocol, typing.Protocol):
     # pull
     def read_text(
         self,
@@ -151,48 +180,32 @@ class Protocol(_PurePathProtocol, typing.Protocol):
 
     def read_bytes(self) -> bytes: ...
 
-    # push
+    # push -- note that (e.g.) additional arguments are required to support setting
+    # ownership and permission via pebble -- see _ConcretePathSubsetExtendedSignatures
     def write_bytes(
         self,
         data: bytes,
-        # pebble args
-        permissions: int | None = None,
-        user: str | None = None,
-        user_id: int | None = None,
-        group: str | None = None,
-        group_id: int | None = None,
-    ) -> int: ...
+    ) -> int: ...  # NOTE: supposed to return the number of bytes written
 
     def write_text(
         self,
         data: str,
         encoding: str | None = None,
-        errors: str | None = None,
+        errors: typing.Literal['strict', 'ignore'] | None = None,
         # TODO: errors -- do we just suppress pebble errors here?
         # 'strict' -> raise ValueError for encoding error
         # 'ignore' -> just write stuff anyway, ignoring errors
         # None -> 'strict'
         # newline: typing.Literal['', '\n', '\r', '\r\n'] | None = None,  # 3.10+
-        # pebble args
-        permissions: int | None = None,
-        user: str | None = None,
-        user_id: int | None = None,
-        group: str | None = None,
-        group_id: int | None = None,
     ) -> int: ...
 
-    # make_dir
+    # make_dir -- note that (e.g.) additional arguments are required to support setting
+    # ownership and permission via pebble -- see _ConcretePathSubsetExtendedSignatures
     def mkdir(
         self,
         mode: int = 0o777,  # TODO: check default value with pebble
         parents: bool = False,
         exist_ok: bool = False,
-        # pebble args
-        permissions: int | None = None,
-        user: str | None = None,
-        user_id: int | None = None,
-        group: str | None = None,
-        group_id: int | None = None,
     ) -> None: ...
 
     # remove
@@ -205,23 +218,40 @@ class Protocol(_PurePathProtocol, typing.Protocol):
 
     def glob(
         self,
-        pattern: str,
-        # case_sensitive: bool = False,  # 3.12+
-    ) -> typing.Generator[Self]: ...
+        pattern: str,  # support for _StrPath added in 3.13
+        # *,
+        # case_sensitive: bool = False,  # added in 3.12
+        # recurse_symlinks: bool = False,  # added in 3.13
+    ) -> Generator[Self]: ...
 
     def rglob(
         self,
-        pattern: str,
-        # case_sensitive: bool = False,  # 3.12+
-    ) -> typing.Generator[Self]: ...
+        pattern: str,  # support for _StrPath added in 3.13
+        # *,
+        # case_sensitive: bool = False,  # added in 3.12
+        # recurse_symlinks: bool = False,  # added in 3.13
+    ) -> Generator[Self]: ...
+        # NOTE: to ease implementation, this could be dropped from the v1 release
 
+    # walk was only added in 3.12 -- let's not support this for now, as we'd need to
+    # implement the walk logic for LocalPath as well as whatever we do for ContainerPath
+    # (which will also be a bit trickier being unable to distinguish symlinks as dirs)
+    # While Path.walk wraps os.walk, there are still ~30 lines of pathlib code we'd need
+    # to vendor for LocalPath.walk
     # def walk(
     #     self,
     #     top_down: bool = True,
     #     on_error: typing.Callable[[OSError], None] | None = None,
-    #     follow_symlinks: bool = False,  # TODO: can we handle this?
-    # ) -> typing.Iterator[tuple[Self, list[str], list[str]]]: ...
-    # 3.12+
+    #     follow_symlinks: bool = False,  # NOTE: ContainerPath runtime error if True
+    # ) -> typing.Iterator[tuple[Self, list[str], list[str]]]:
+    #     # TODO: if we add a follow_symlinks option to Pebble's list_files API, we can
+    #     #       then support follow_symlinks=True on supported Pebble (Juju) versions
+    #     ...
+
+    # def stat(self) -> os.stat_result: ...
+    # stat follows symlinks to return information about the target
+    # Pebble's list_files tells you if a file is a symlink, but not what the target is
+    # TODO: support if we add follow_symlinks to Pebble's list_files API
 
     def lstat(self) -> os.stat_result: ...
 
@@ -229,34 +259,173 @@ class Protocol(_PurePathProtocol, typing.Protocol):
 
     def group(self) -> str: ...
 
-    def exists(self) -> bool: ...  # TODO: follow_symlinks argument?
+    # exists, is_dir and is_file are problematic, because they follow symlinks by default
+    # and Pebble will only tell us if the file is a symlink - nothing about its target.
+    #
+    # Python 3.12 and 3.13 add keyword arguments to control this (defaulting to True)
+    # The ContainerPath implementation should accept the follow_symlinks argument.
+    # Maybe the LocalPath implementation should too, so that the protocol can as well?
+    #
+    # In the ContainerPath implementation, if follow_symlinks==True and the result type
+    # is pebble.FileTypes.SYMLINK, then we'll raise a NotImplementedError at runtime.
+    #
+    # TODO: add to Pebble an optional eval/follow_symlinks arg for the list_files api,
+    #       and then only raise NotImplementedError if follow_symlinks=True AND the
+    #       result type is pebble.FileTypes.SYMLINK, AND the pebble version is too old
 
-    def is_dir(self) -> bool: ...
+    def exists(self) -> bool:  # follow_symlinks=True added in 3.12
+        """Whether this path exists.
 
-    def is_file(self) -> bool: ...
+        WARNING: ContainerPath may raise a NotImplementedError if the path is a symlink.
+        """
+        ...
+
+    def is_dir(self) -> bool:  # follow_symlinks=True added in 3.13
+        """Whether this path is a directory.
+
+        WARNING: ContainerPath may raise a NotImplementedError if the path is a symlink.
+        """
+        ...
+
+    def is_file(self) -> bool:  # follow_symlinks=True added in 3.13
+        """Whether path is a regular file.
+
+        WARNING: ContainerPath may raise a NotImplementedError if the path is a symlink.
+        """
+        ...
 
     def is_mount(self) -> bool: ...
 
     def is_symlink(self) -> bool: ...
 
     # def is_junction(self) -> bool: ...
-    # 3.12+ and only useful on Windows
-
-    def is_block_device(
-        self,
-    ) -> (
-        bool
-    ): ...  # TODO: pebble only tells us if it's a device, so maybe we provide is_device instead
-
-    def is_char_device(
-        self,
-    ) -> (
-        bool
-    ): ...  # TODO: pebble only tells us if it's a device, so maybe we provide is_device instead
+    # 3.12
+    # this will always be False in ContainerPath since we assume a Linux container
 
     def is_fifo(self) -> bool: ...
 
     def is_socket(self) -> bool: ...
+
+    # is_block_device and is_char_device are problematic because pebble only tells us if
+    # it's a device at all. We could add an is_device method, which locks us into using
+    # LocalPath -- so maybe a module level is_device function would be better?
+    # def is_block_device(self) -> bool: ...
+    # def is_char_device(self) -> bool: ...
+
+    ################################################################################
+    # the following concrete methods are currently ruled out due to Pebble support #
+    ################################################################################
+
+    # def chmod
+        # pebble sets mode on creation
+        # can't provide a separate method
+        # needs to be argument for other functions
+        # (same treatment needed for chown)
+
+    # link creation, modification, target retrieval
+    # pebble doesn't support link manipulation
+    # def hardlink_to
+    # def symlink_to
+    # def lchmod
+    # def readlink
+    # def resolve
+
+    # def samefile
+        # pebble doesn't return device and i-node number
+        # can't provide the same semantics
+
+    # def open
+        # the semantics would be different due to needing to make a local copy
+
+    # def touch
+        # would have to pull down the existing file and push it back up just to set mtime
+
+    ##################
+    # relative paths #
+    ##################
+
+    # if we support relative paths, we'd need to implicitly call absolute before every
+    # call that goes to pebble
+    # I think it would be fine to v1 to only support absolute paths, raising an error
+    # on file operations with relative paths
+    # however, if we were willing to support the methods below, particularly cwd, then
+    # we could support relative paths
+
+    # the following methods would require us to either hardcode cwd or use a pebble.exec
+    # def cwd
+        # typically /root in container
+        # do we need to query this each time? can we hardcode it?
+    # def absolute
+        # interpret relative to cwd
+
+    # the following methods would require us to either hardcode home or use a pebble.exec
+    # def home
+        # typically /root in container
+        # do we need to query this each time? can we hardcode it?
+    # def expanduser
+        # '~' in parts becomes self.home
+
+
+class _ConcretePathSubsetExtendedSignatures(_ConcretePathSubset, typing.Protocol):
+    # push
+    def write_bytes(
+        self,
+        data: bytes,
+        # extended with pebble args:
+        permissions: int | None = None,
+        user: str | None = None,
+        user_id: int | None = None,
+        group: str | None = None,
+        group_id: int | None = None,
+    ) -> int: ...
+
+    def write_text(
+        self,
+        data: str,
+        encoding: str | None = None,
+        errors: typing.Literal['strict', 'ignore'] | None = None,
+        # extended with pebble args:
+        permissions: int | None = None,
+        user: str | None = None,
+        user_id: int | None = None,
+        group: str | None = None,
+        group_id: int | None = None,
+    ) -> int: ...
+
+    # make_dir
+    def mkdir(
+        self,
+        mode: int = 0o777,
+        parents: bool = False,
+        exist_ok: bool = False,
+        # extended with pebble args:
+        permissions: int | None = None,
+        user: str | None = None,
+        user_id: int | None = None,
+        group: str | None = None,
+        group_id: int | None = None,
+    ) -> None: ...
+
+
+class _CommonProtocol(_ConcretePathSubset, _PurePathSubset, typing.Protocol):
+    """Using this protocol does not allow setting permissions and ownership on files.
+
+    pathlib.Path is compatible with this protocol out of the box.
+
+    Should this protocol be public? I don't think so -- users can write this instead:
+    ContainerPath | pathlib.Path
+
+    Do we want to recommend/support this typing? Maybe ... for example, we could provide
+    module level write functions taking ContainerPath | pathlib.Path as alternatives to
+    using LocalPath.
+    """
+
+
+class Protocol(_ConcretePathSubsetExtendedSignatures, _PurePathSubset, typing.Protocol):
+    """Using this protocol allows setting permissions and ownership on file creation.
+
+    pathlib.Path is not compatible with this protocol -- wrap with LocalPath.
+    """
 
 
 class ContainerPath(pathlib.PurePosixPath):
@@ -558,32 +727,39 @@ class ContainerPath(pathlib.PurePosixPath):
 
     def group(self) -> str: ...
 
-    def exists(self) -> bool: ...
+    def exists(self, follow_symlinks: bool = True) -> bool:
+        return self._file_matches(filetype=None, follow_symlinks=follow_symlinks)
 
-    def is_dir(self) -> bool:
-        return self.container.isdir(self)
+    def is_dir(self, follow_symlinks: bool = True) -> bool:
+        return self._file_matches(pebble.FileType.DIRECTORY, follow_symlinks=follow_symlinks)
 
-    def is_file(self) -> bool: ...
+    def is_file(self, follow_symlinks: bool = True) -> bool:
+        return self._file_matches(pebble.FileType.FILE, follow_symlinks=follow_symlinks)
+
+    def _file_matches(
+        self, filetype: pebble.FileType | None, follow_symlinks: bool = False,
+    ) -> bool:
+        info = self._get_fileinfo(follow_symlinks=follow_symlinks)
+        if info is None:
+            return False
+        if follow_symlinks and info.type is pebble.FileType.SYMLINK:
+            raise NotImplementedError()
+        if filetype is None:
+            return True
+        return info.type is filetype
+
+    def _get_fileinfo(self, follow_symlinks: bool = False) -> pebble.FileInfo | None:
+        try:
+            [info] = self.container.list_files(self.as_posix(), itself=True)
+        except pebble.APIError as e:
+            if _errors.API.FileNotFound.matches(e):
+                return None
+            raise
+        return info
 
     def is_mount(self) -> bool: ...
 
     def is_symlink(self) -> bool: ...
-
-    def is_junction(
-        self,
-    ) -> bool: ...  # TODO: don't include in Protocol since it's always false in our case?
-
-    def is_block_device(
-        self,
-    ) -> (
-        bool
-    ): ...  # TODO: pebble only tells us if it's a device, so maybe we provide is_device instead
-
-    def is_char_device(
-        self,
-    ) -> (
-        bool
-    ): ...  # TODO: pebble only tells us if it's a device, so maybe we provide is_device instead
 
     def is_fifo(self) -> bool: ...
 
@@ -645,7 +821,7 @@ def _type_check_1(  # pyright: ignore[reportUnusedFunction]
     _pure_path: pathlib.PurePath,
     _local_path: LocalPath,
 ) -> None:
-    _p: _PurePathProtocol
+    _p: _PurePathSubset
     _p = _container_path
     _p = _local_path
     _p = _path
@@ -674,12 +850,19 @@ def _type_check_1(  # pyright: ignore[reportUnusedFunction]
     _pppp = _pure_path  # pyright: ignore[reportAssignmentType]
     # we expect PurePath to be incompatible because it lacks read_text etc
 
+    _ppppp: _CommonProtocol
+    _ppppp = _container_path
+    _ppppp = _local_path
+    _ppppp = _path
+    _ppppp = _pure_path  # pyright: ignore[reportAssignmentType]
+    # we expect PurePath to be incompatible because it lacks read_text etc
+
 
 _StrOrBytesPath: TypeAlias = 'str | bytes | os.PathLike[str] | os.PathLike[bytes]'
 
 
 def _type_check_2(  # pyright: ignore[reportUnusedFunction]
-    _pure_path_protocol: _PurePathProtocol,
+    _pure_path_protocol: _PurePathSubset,
     _protocol: Protocol,
     _container_path: ContainerPath,
     _local_path: LocalPath,
