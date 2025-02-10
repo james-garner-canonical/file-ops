@@ -125,9 +125,11 @@ class _PurePathProtocol(typing.Protocol):
 
     # def with_stem(self, stem: str) -> Self: ...  # 3.9+
 
-    def with_segments(
-        self, *pathsegments: _StrPath
-    ) -> Self: ...  # 3.12+ for new subclassing machinery
+    # def with_segments(
+    #     self, *pathsegments: _StrPath
+    # ) -> Self: ...
+    # 3.12+ for new subclassing machinery
+    # we'll have to implement it, but it shouldn't be part of the protocol
 
     def joinpath(self, *other: _StrPath) -> Self: ...
 
@@ -144,7 +146,7 @@ class Protocol(_PurePathProtocol, typing.Protocol):
         self,
         encoding: str | None = None,
         errors: typing.Literal['strict', 'ignore'] | None = None,
-        newline: typing.Literal['', '\n', '\r', '\r\n'] | None = None,
+        # newline: typing.Literal['', '\n', '\r', '\r\n'] | None = None,  # 3.13+
     ) -> str: ...
 
     def read_bytes(self) -> bytes: ...
@@ -159,25 +161,25 @@ class Protocol(_PurePathProtocol, typing.Protocol):
         user_id: int | None = None,
         group: str | None = None,
         group_id: int | None = None,
-    ) -> None: ...
+    ) -> int: ...
 
     def write_text(
         self,
         data: str,
         encoding: str | None = None,
-        errors: typing.Literal['strict', 'ignore'] | None = None,
+        errors: str | None = None,
         # TODO: errors -- do we just suppress pebble errors here?
         # 'strict' -> raise ValueError for encoding error
         # 'ignore' -> just write stuff anyway, ignoring errors
         # None -> 'strict'
-        newline: typing.Literal['', '\n', '\r', '\r\n'] | None = None,
+        # newline: typing.Literal['', '\n', '\r', '\r\n'] | None = None,  # 3.10+
         # pebble args
         permissions: int | None = None,
         user: str | None = None,
         user_id: int | None = None,
         group: str | None = None,
         group_id: int | None = None,
-    ) -> None: ...
+    ) -> int: ...
 
     # make_dir
     def mkdir(
@@ -201,16 +203,25 @@ class Protocol(_PurePathProtocol, typing.Protocol):
     # list_files
     def iterdir(self) -> typing.Iterable[Self]: ...
 
-    def glob(self, pattern: str, *, case_sensitive: bool = False) -> typing.Generator[Self]: ...
-
-    def rglob(self, pattern: str, *, case_sensitive: bool = False) -> typing.Generator[Self]: ...
-
-    def walk(
+    def glob(
         self,
-        top_down: bool = True,
-        on_error: typing.Callable[[OSError], None] | None = None,
-        follow_symlinks: bool = False,  # TODO: can we handle this?
-    ) -> typing.Iterator[tuple[Self, list[str], list[str]]]: ...
+        pattern: str,
+        # case_sensitive: bool = False,  # 3.12+
+    ) -> typing.Generator[Self]: ...
+
+    def rglob(
+        self,
+        pattern: str,
+        # case_sensitive: bool = False,  # 3.12+
+    ) -> typing.Generator[Self]: ...
+
+    # def walk(
+    #     self,
+    #     top_down: bool = True,
+    #     on_error: typing.Callable[[OSError], None] | None = None,
+    #     follow_symlinks: bool = False,  # TODO: can we handle this?
+    # ) -> typing.Iterator[tuple[Self, list[str], list[str]]]: ...
+    # 3.12+
 
     def lstat(self) -> os.stat_result: ...
 
@@ -228,9 +239,8 @@ class Protocol(_PurePathProtocol, typing.Protocol):
 
     def is_symlink(self) -> bool: ...
 
-    def is_junction(
-        self,
-    ) -> bool: ...  # TODO: don't include in Protocol since it's always false in our case?
+    # def is_junction(self) -> bool: ...
+    # 3.12+ and only useful on Windows
 
     def is_block_device(
         self,
@@ -394,7 +404,7 @@ class ContainerPath(pathlib.PurePosixPath):
         self,
         encoding: str | None = None,
         errors: typing.Literal['strict', 'ignore'] | None = None,
-        newline: typing.Literal['', '\n', '\r', '\r\n'] | None = None,
+        # newline: typing.Literal['', '\n', '\r', '\r\n'] | None = None,  # 3.13+
     ) -> str:
         return self.container.pull(self).read()
 
@@ -411,7 +421,7 @@ class ContainerPath(pathlib.PurePosixPath):
         user_id: int | None = None,
         group: str | None = None,
         group_id: int | None = None,
-    ) -> None:
+    ) -> int:
         self.container.push(
             path=self,
             source=io.BytesIO(data),
@@ -422,27 +432,29 @@ class ContainerPath(pathlib.PurePosixPath):
             group=group,
             group_id=group_id,
         )
+        return 0
 
     def write_text(
         self,
         data: str,
         encoding: str | None = None,
-        errors: typing.Literal['strict', 'ignore'] | None = None,
-        newline: typing.Literal['', '\n', '\r', '\r\n'] | None = None,
+        errors: str | None = None,
+        # newline: typing.Literal['', '\n', '\r', '\r\n'] | None = None,  # 3.10+
         # pebble args
         permissions: int | None = None,
         user: str | None = None,
         user_id: int | None = None,
         group: str | None = None,
         group_id: int | None = None,
-    ) -> None:
+    ) -> int:
         # newline:
         # None -> turn '\n' into os.linesep
         # '' | '\n' -> do nothing
         # '\r' | '\r\r' -> replace '\n' with this option
         self.container.push(
             path=self,
-            source=io.StringIO(data, newline=newline),
+            source=data,
+            # source=io.StringIO(data, newline=newline),
             encoding=encoding if encoding is not None else 'utf-8',
             make_dirs=False,
             permissions=permissions,
@@ -451,6 +463,7 @@ class ContainerPath(pathlib.PurePosixPath):
             group=group,
             group_id=group_id,
         )
+        return 0
 
     # make_dir
     def mkdir(
@@ -484,7 +497,7 @@ class ContainerPath(pathlib.PurePosixPath):
                 _errors.Path.Generic,
             ):
                 if error_kind.matches(error):
-                    raise error_kind.exception_from_error(error) from error
+                    raise  # error_kind.exception_from_error(error) from error
             raise
 
     def unlink(self, missing_ok: bool = False) -> None:
@@ -497,9 +510,18 @@ class ContainerPath(pathlib.PurePosixPath):
                 if missing_ok:
                     return
                 raise FileNotFoundError from error
-            for error_kind in []:
+            for error_kind in (
+                _errors.API.BadRequest,
+                _errors.API.FileNotFound,
+                _errors.Path.FileExists,
+                _errors.Path.RelativePath,
+                _errors.Path.FileNotFound,
+                _errors.Path.Lookup,
+                _errors.Path.Permission,
+                _errors.Path.Generic,
+            ):
                 if error_kind.matches(error):
-                    raise error_kind.exception_from_error(error) from error
+                    raise  # error_kind.exception_from_error(error) from error
             raise
 
     # list_files
@@ -511,9 +533,17 @@ class ContainerPath(pathlib.PurePosixPath):
         for f in file_infos:
             yield type(self)(f.path, container=self.container)
 
-    def glob(self, pattern: str, *, case_sensitive: bool = False) -> typing.Generator[Self]: ...
+    def glob(
+        self,
+        pattern: str,
+        # case_sensitive: bool = False,  # 3.12+
+    ) -> typing.Generator[Self]: ...
 
-    def rglob(self, pattern: str, *, case_sensitive: bool = False) -> typing.Generator[Self]: ...
+    def rglob(
+        self,
+        pattern: str,
+        # case_sensitive: bool = False,  # 3.12+
+    ) -> typing.Generator[Self]: ...
 
     def walk(
         self,
@@ -564,35 +594,35 @@ class LocalPath(pathlib.PosixPath):  # TODO: just inherit from PosixPath?
     def write_bytes(  # TODO: data type?
         self,
         data: ReadableBuffer,
+        # pebble args
         permissions: int | None = None,
         user: str | None = None,
         user_id: int | None = None,
         group: str | None = None,
         group_id: int | None = None,
-    ) -> None: ...
+    ) -> int:
+        ...
+        return 0
 
     def write_text(  # TODO: use str instead of Literals?
         self,
         data: str,
         encoding: str | None = None,
-        errors: typing.Literal['strict', 'ignore'] | None = None,
-        # TODO: errors -- can pebble handle this?
-        # 'strict' -> raise ValueError for encoding error
-        # 'ignore' -> just write stuff anyway, ignoring errors
-        # None -> 'strict'
-        newline: typing.Literal['', '\n', '\r', '\r\n'] | None = None,
+        errors: str | None = None,
+        # pebble args
         permissions: int | None = None,
         user: str | None = None,
         user_id: int | None = None,
         group: str | None = None,
         group_id: int | None = None,
-    ) -> None:
-        super().write_text(data=data, encoding=encoding, errors=errors, newline=newline)
+    ) -> int:
+        super().write_text(data=data, encoding=encoding, errors=errors)
         self.chmod(mode=permissions if permissions is not None else 0o644)
         # 0o644 is Pebble default TODO: what should default behaviour be?
         user_arg = _chown_utils.get_user_arg(str_name=user, int_id=user_id)
         group_arg = _chown_utils.get_group_arg(str_name=group, int_id=group_id)
         _chown_utils.try_chown(self, user=user_arg, group=group_arg)
+        return 0
 
     # make_dir
     def mkdir(
@@ -600,6 +630,7 @@ class LocalPath(pathlib.PosixPath):  # TODO: just inherit from PosixPath?
         mode: int = DIR_DEFAULT_MODE,
         parents: bool = False,
         exist_ok: bool = False,
+        # pebble args
         permissions: int | None = None,
         user: str | None = None,
         user_id: int | None = None,
@@ -673,20 +704,20 @@ def _type_check_2(  # pyright: ignore[reportUnusedFunction]
     open(_pure_path)  # noqa: SIM115
 
 
-def _type_check_3():
+def _type_check_3():  # pyright: ignore[reportUnusedFunction]
     _pp: os.PathLike[str]
 
-    class AnnoyingABCInheritance0(os.PathLike): ...
+    class AnnoyingABCInheritance0(os.PathLike[str]): ...
 
-    f0 = AnnoyingABCInheritance0()
+    f0 = AnnoyingABCInheritance0()  # pyright: ignore[reportAbstractUsage]
 
-    class AnnoyingABCInheritance1(os.PathLike):
-        def __fspath__(self, incompatible) -> str: ...
+    class AnnoyingABCInheritance1(os.PathLike[str]):
+        def __fspath__(self, incompatible: None) -> str: ...  # pyright: ignore[reportIncompatibleMethodOverride]
 
     f1 = AnnoyingABCInheritance1()
 
-    class AnnoyingABCInheritance2(os.PathLike):
-        def __fspath__(self) -> None: ...
+    class AnnoyingABCInheritance2(os.PathLike[str]):
+        def __fspath__(self) -> None: ...  # pyright: ignore[reportIncompatibleMethodOverride]
 
     f2 = AnnoyingABCInheritance2()
 
@@ -696,17 +727,19 @@ def _type_check_3():
     g = Good()
 
     class Bad1(Good):
-        def __fspath__(self, incompatible) -> str: ...
+        def __fspath__(  # pyright: ignore[reportIncompatibleMethodOverride]
+            self, incompatible: None
+        ) -> str: ...
 
     b1 = Bad1()
 
     class Bad2(Good):
-        def __fspath__(self) -> None: ...
+        def __fspath__(self) -> None: ...  # pyright: ignore[reportIncompatibleMethodOverride]
 
     b2 = Bad2()
     _pp = f0  # argh!
     _pp = f1  # argh!
     _pp = f2  # argh!
     _pp = g
-    _pp = b1
-    _pp = b2
+    _pp = b1  # pyright: ignore[reportAssignmentType]
+    _pp = b2  # pyright: ignore[reportAssignmentType]
